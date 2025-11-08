@@ -34,6 +34,17 @@ markers = [
 
 [tool.coverage.run]
 source = ["src/hp_ctl"]
+branch = true
+omit = ["*/site-packages/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 line-length = 100

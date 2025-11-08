@@ -1,7 +1,9 @@
-import pytest
 from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
 import yaml
+
 from hp_ctl.decoder import Decoder
 from hp_ctl.message import Message
 
@@ -16,7 +18,9 @@ class MessageTestCase:
 
 def _load_test_cases() -> dict:
     """Load test cases from YAML fixture file"""
-    fixture_path = Path(__file__).parent / "fixtures" / "decoder_test_cases.yaml"
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "decoder_test_cases.yaml"
+    )
 
     with open(fixture_path, "r") as f:
         data = yaml.safe_load(f)
@@ -28,11 +32,17 @@ def _load_test_cases() -> dict:
 
         # Build expected Message with only specified fields
         expected_dict = case_data.get("expected", {})
-        expected = Message(
-            len=expected_dict.get("len", 0),
-            checksum=bytes.fromhex(expected_dict.get("checksum", "")),
-            quiet_mode=expected_dict.get("quiet_mode", 0),
-        )
+        message_kwargs = {}
+        for field_name in Message.__dataclass_fields__:
+            if field_name in expected_dict:
+                value = expected_dict[field_name]
+                # Convert hex strings to bytes for bytes fields
+                if field_name == "checksum" and isinstance(value, str):
+                    message_kwargs[field_name] = bytes.fromhex(value)
+                else:
+                    message_kwargs[field_name] = value
+
+        expected = Message(**message_kwargs)
 
         test_cases[case_id] = MessageTestCase(
             name=case_id,
@@ -53,19 +63,28 @@ def decoder():
 
 def _validate_message(decoded: Message, expected: Message) -> None:
     """Validate decoded message against expected values.
+
     Only checks fields that are specified (non-zero/non-empty).
     """
-    if expected.len != 0:
-        assert decoded.len == expected.len, f"len mismatch: {decoded.len} != {expected.len}"
-    if expected.checksum != b"":
-        assert decoded.checksum == expected.checksum, f"checksum mismatch: {decoded.checksum.hex()} != {expected.checksum.hex()}"
-    if expected.quiet_mode != 0:
-        assert decoded.quiet_mode == expected.quiet_mode, f"quiet_mode mismatch: {decoded.quiet_mode} != {expected.quiet_mode}"
+    for field_name in expected.__dataclass_fields__:
+        expected_value = getattr(expected, field_name)
+
+        # Skip unspecified fields (0 for int, b"" for bytes)
+        if expected_value == 0 or expected_value == b"":
+            continue
+
+        decoded_value = getattr(decoded, field_name)
+        assert decoded_value == expected_value, (
+            f"{field_name} mismatch: {decoded_value} != {expected_value}"
+        )
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES.values(), ids=lambda tc: tc.name)
 def test_decoder_parses_valid_message(decoder, test_case):
-    """Test that decoder can parse a valid UART message and validate against expected values"""
+    """Test that decoder can parse a valid UART message.
+
+    Validates decoded message against expected values from test case.
+    """
     raw_bytes = bytes.fromhex(test_case.raw_hex)
     message = decoder.decode(raw_bytes)
 
