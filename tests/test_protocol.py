@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import pytest
 import yaml
@@ -14,6 +15,8 @@ class MessageTestCase:
     raw_hex: str
     expected: Message
     expected_fields: set[str]  # Track which fields were explicitly specified
+    should_raise: Optional[type] = None
+    error_message: Optional[str] = None
 
 
 def _load_test_cases() -> dict:
@@ -47,11 +50,21 @@ def _load_test_cases() -> dict:
 
         expected = Message(**message_kwargs)
 
+        should_raise = None
+        error_message = None
+        if "should_raise" in case_data:
+            should_raise_name = case_data["should_raise"]
+            exception_map = {"ValueError": ValueError}
+            should_raise = exception_map.get(should_raise_name)
+            error_message = case_data.get("error_message")
+
         test_cases[case_id] = MessageTestCase(
             name=case_id,
             raw_hex=raw_hex,
             expected=expected,
             expected_fields=set(expected_dict.keys()),
+            should_raise=should_raise,
+            error_message=error_message,
         )
 
     return test_cases
@@ -89,12 +102,31 @@ def _validate_message(decoded: Message, expected: Message, expected_fields: set[
 
 @pytest.mark.parametrize("test_case", TEST_CASES.values(), ids=lambda tc: tc.name)
 def test_decoder_parses_valid_message(codec, test_case):
-    """Test that decoder can parse a valid UART message.
-
-    Validates decoded message against expected values from test case.
-    """
+    """Test that decoder can parse a valid UART message or raises expected errors."""
     raw_bytes = bytes.fromhex(test_case.raw_hex)
-    message = codec.decode(raw_bytes)
 
-    assert isinstance(message, Message)
-    _validate_message(message, test_case.expected, test_case.expected_fields)
+    if test_case.should_raise:
+        with pytest.raises(test_case.should_raise) as exc_info:
+            codec.decode(raw_bytes)
+        if test_case.error_message:
+            assert test_case.error_message in str(exc_info.value)
+    else:
+        message = codec.decode(raw_bytes)
+        assert isinstance(message, Message)
+        _validate_message(message, test_case.expected, test_case.expected_fields)
+
+def test_encoder_not_implemented(codec):
+    """Test that encode raises NotImplementedError"""
+    message = Message(len=0, checksum=b"", fields={})
+    with pytest.raises(NotImplementedError):
+        codec.encode(message)
+
+def test_temp_converter():
+    from hp_ctl.protocol import temp_converter
+    assert temp_converter(176) == 48
+    assert temp_converter(128) == 0
+
+def test_power_converter():
+    from hp_ctl.protocol import power_converter
+    assert power_converter(1) == 0.0
+    assert power_converter(10) == 1.8

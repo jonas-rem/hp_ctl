@@ -25,3 +25,58 @@ test_cases:
       checksum: "77"
       quiet_mode : "Off"
       zone1_actual_temp: 48
+      heat_power_consumption: 0.0
+      heat_power_generation: 0.0
+      dhw_power_consumption: 1.8
+      dhw_power_generation: 3.8
+
+  invalid_message_too_short:
+    raw_hex: |
+      71 c8
+    expected:
+      len: 0
+      checksum: ""
+    should_raise: ValueError
+    error_message: "Invalid message len"
+
+  invalid_message_length_mismatch:
+    raw_hex: |
+      71 05 01 10 56 55 62 49 00 05 00 00 00 00 00 00
+      00 00 00 00 19 15 11 55 16 5e 55 05 09 00 00 00
+      00 00 00 00 00 00 80 8f 80 8a b2 71 71 97 99 00
+      00 00 00 00 00 00 00 00 00 00 80 85 15 8a 85 85
+      d0 7b 78 1f 7e 1f 1f 79 79 8d 8d 9e 96 71 8f b7
+      a3 7b 8f 8e 85 80 8f 8a 94 9e 8a 8a 94 9e 82 90
+      8b 05 65 78 c1 0b 00 00 00 00 00 00 00 00 55 56
+      55 21 53 15 5a 05 12 12 19 00 00 00 00 00 00 00
+      00 e2 ce 0d 71 81 72 ce 0c 92 81 b0 00 aa 7c ab
+      b0 32 32 9c b6 32 32 32 80 b7 af cd 9a ac 79 80
+      77 80 ff 91 01 29 59 00 00 3b 0b 1c 51 59 01 36
+      79 01 01 c3 02 00 dd 02 00 05 00 00 01 00 00 06
+      01 01 01 01 01 0a 14 00 00 00 77
+    expected:
+      len: 0
+      checksum: ""
+    should_raise: ValueError
+    error_message: "Invalid message len"
+
+  invalid_checksum:
+    raw_hex: |
+      71 c8 01 10 56 55 62 49 00 05 00 00 00 00 00 00
+      00 00 00 00 19 15 11 55 16 5e 55 05 09 00 00 00
+      00 00 00 00 00 00 80 8f 80 8a b2 71 71 97 99 00
+      00 00 00 00 00 00 00 00 00 00 80 85 15 8a 85 85
+      d0 7b 78 1f 7e 1f 1f 79 79 8d 8d 9e 96 71 8f b7
+      a3 7b 8f 8e 85 80 8f 8a 94 9e 8a 8a 94 9e 82 90
+      8b 05 65 78 c1 0b 00 00 00 00 00 00 00 00 55 56
+      55 21 53 15 5a 05 12 12 19 00 00 00 00 00 00 00
+      00 e2 ce 0d 71 81 72 ce 0c 92 81 b0 00 aa 7c ab
+      b0 32 32 9c b6 32 32 32 80 b7 af cd 9a ac 79 80
+      77 80 ff 91 01 29 59 00 00 3b 0b 1c 51 59 01 36
+      79 01 01 c3 02 00 dd 02 00 05 00 00 01 00 00 06
+      01 01 01 01 01 0a 14 00 00 00 FF
+    expected:
+      len: 0
+      checksum: ""
+    should_raise: ValueError
+    error_message: "Invalid checksum"
