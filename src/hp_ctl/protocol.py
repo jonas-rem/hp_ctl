@@ -102,12 +102,10 @@ class MessageCodec:
             return raw_value
 
         byte_val = data[field.byte_offset]
-        print(f"DEBUG: byte_val at offset {field.byte_offset} = {byte_val:02x}")
         if field.bit_offset is not None and field.bit_length is not None:
             # Extract bits from byte_val
             mask = (1 << field.bit_length) - 1
             return (byte_val >> field.bit_offset) & mask
-        print(f"DEBUG: byte_val ret {byte_val}")
         return byte_val
 
     def _calculate_checksum(self, data: bytes) -> int:
@@ -136,6 +134,10 @@ def quiet_mode_converter(value: int) -> str:
     }
     return quiet_modes.get(value, f"Unknown({value})")
 
+def power_converter(value: int) -> float:
+    """Convert power: (value - 1) / 5"""
+    return (value - 1) / 5
+
 MESSAGE_FIELDS = [
     FieldSpec(
         name="quiet_mode",
@@ -150,6 +152,30 @@ MESSAGE_FIELDS = [
         byte_offset=139,
         converter=temp_converter,
         unit="°C",
+    ),
+    FieldSpec(
+        name="heat_power_consumption",
+        byte_offset=193,
+        converter=power_converter,
+        unit="kW",
+    ),
+    FieldSpec(
+        name="heat_power_generation",
+        byte_offset=194,
+        converter=power_converter,
+        unit="kW",
+    ),
+    FieldSpec(
+        name="dhw_power_consumption",
+        byte_offset=197,
+        converter=power_converter,
+        unit="kW",
+    ),
+    FieldSpec(
+        name="dhw_power_generation",
+        byte_offset=198,
+        converter=power_converter,
+        unit="kW",
     ),
 ]
 
