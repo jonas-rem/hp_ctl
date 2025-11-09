@@ -16,6 +16,9 @@ class FieldSpec:
     converter: Optional[Callable[[int], Any]] = None
     unit: Optional[str] = None
     default: Any = None
+    ha_class: Optional[str] = None
+    ha_state_class: Optional[str] = None
+    ha_icon: Optional[str] = None
 
 
 @dataclass
@@ -125,36 +128,53 @@ MESSAGE_FIELDS = [
         bit_length=5,
         converter=quiet_mode_converter,
         unit="",
+        ha_class="enum",
+        ha_icon="mdi:fan",
     ),
     FieldSpec(
         name="zone1_actual_temp",
         byte_offset=139,
         converter=temp_converter,
         unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
     ),
     FieldSpec(
         name="heat_power_consumption",
         byte_offset=193,
         converter=power_converter,
         unit="kW",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
     ),
     FieldSpec(
         name="heat_power_generation",
         byte_offset=194,
         converter=power_converter,
         unit="kW",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
     ),
     FieldSpec(
         name="dhw_power_consumption",
         byte_offset=197,
         converter=power_converter,
         unit="kW",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
     ),
     FieldSpec(
         name="dhw_power_generation",
         byte_offset=198,
         converter=power_converter,
         unit="kW",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
     ),
 ]
 
