@@ -75,6 +75,10 @@ pip install .
 pip install -e git+https://github.com/jonas-rem/hp-ctl.git#egg=hp-ctl
 ```
 
+## Logging
+
+Adjust the log level in pyproject.toml.
+
 ## Testing
 
 ### With Tox
@@ -106,4 +110,3 @@ ruff check hp_ctl tests
 # Type checking
 mypy hp_ctl
 ```
-
