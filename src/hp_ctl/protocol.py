@@ -1,5 +1,8 @@
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,6 +42,7 @@ class MessageCodec:
         Returns:
             Decoded Message object
         """
+        logger.debug("Decoding message: %d bytes", len(raw_msg))
         # Parse fields from data
         values = {}
         for field in self.fields:
@@ -47,7 +51,15 @@ class MessageCodec:
                 field.converter(raw_value) if field.converter else raw_value
             )
             values[field.name] = converted_value
+            logger.debug(
+                "Field %s: raw=0x%x, converted=%s %s",
+                field.name,
+                raw_value,
+                converted_value,
+                field.unit or "",
+            )
 
+        logger.debug("Message decoded successfully: %d fields", len(values))
         return Message(fields=values)
 
     def encode(self, message: Message) -> bytes:
@@ -61,13 +73,28 @@ class MessageCodec:
             raw_value = 0
             for i in range(field.byte_length):
                 raw_value = (raw_value << 8) | data[field.byte_offset + i]
+            logger.debug(
+                "Extracted multi-byte field at offset %d (length %d): 0x%x",
+                field.byte_offset,
+                field.byte_length,
+                raw_value,
+            )
             return raw_value
 
         byte_val = data[field.byte_offset]
         if field.bit_offset is not None and field.bit_length is not None:
             # Extract bits from byte_val
             mask = (1 << field.bit_length) - 1
-            return (byte_val >> field.bit_offset) & mask
+            extracted = (byte_val >> field.bit_offset) & mask
+            logger.debug(
+                "Extracted bit field at offset %d, bits [%d:%d]: 0x%x",
+                field.byte_offset,
+                field.bit_offset,
+                field.bit_offset + field.bit_length,
+                extracted,
+            )
+            return extracted
+        logger.debug("Extracted byte field at offset %d: 0x%x", field.byte_offset, byte_val)
         return byte_val
 
 

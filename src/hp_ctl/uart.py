@@ -39,9 +39,12 @@ class UartReceiver:
         self.on_message = on_message
         self.poll_interval = poll_interval
         self.listening = True
+        logger.debug("Opening UART connection: %s at %d baud", port, baudrate)
         self.serial_conn = serial.Serial(port, baudrate)
+        logger.info("UART connection opened: %s", port)
         self.thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.thread.start()
+        logger.debug("Listening thread started")
 
     def __enter__(self):
         """Context manager entry."""
@@ -53,9 +56,11 @@ class UartReceiver:
 
     def close(self) -> None:
         """Close UART connection and stop listening."""
+        logger.debug("Closing UART connection")
         self.listening = False
         self.thread.join(timeout=1.0)
         self.serial_conn.close()
+        logger.info("UART connection closed")
 
     def read_message(self) -> bytes:
         """Read a complete message from UART.
@@ -106,9 +111,13 @@ class UartReceiver:
             True if length is valid, False otherwise.
         """
         if len(message) < MESSAGE_MIN_LENGTH:
+            logger.warning("Length validation failed: message too short (%d bytes)", len(message))
             return False
         # Expected: start(1) + length(1) + payload + checksum(1)
-        return len(message) == 3 + message[1]
+        valid = len(message) == 3 + message[1]
+        if not valid:
+            logger.warning("Length validation failed: declared=%d, actual=%d", message[1], len(message) - 3)
+        return valid
 
     def validate_crc(self, message: bytes) -> bool:
         """Validate CRC.
@@ -124,13 +133,17 @@ class UartReceiver:
             True if CRC is valid, False otherwise.
         """
         if len(message) < 2:
+            logger.warning("CRC validation failed: message too short")
             return False
         # Checksum is the last byte
         expected_checksum = message[-1]
         # Compute sum-based checksum of all bytes except the checksum
         data_sum = sum(message[:-1])
         computed_checksum = (256 - data_sum) & 0xFF
-        return computed_checksum == expected_checksum
+        valid = computed_checksum == expected_checksum
+        if not valid:
+            logger.warning("CRC validation failed: expected=0x%02x, computed=0x%02x", expected_checksum, computed_checksum)
+        return valid
 
     def receive_and_validate(self) -> Optional[bytes]:
         """Receive a message and validate it.
@@ -140,13 +153,10 @@ class UartReceiver:
         """
         message = self.read_message()
         if self.validate_length(message) and self.validate_crc(message):
+            logger.debug("Message parsed: %s", message.hex())
             return message
         return None
 
-
-        self.listening = True
-        self.thread = threading.Thread(target=self._listen_loop, args=(poll_interval,))
-        self.thread.start()
 
     def _listen_loop(self) -> None:
         """Background loop to check for data and emit via callback.
@@ -158,6 +168,7 @@ class UartReceiver:
             try:
                 message = self.receive_and_validate()
                 if message and self.on_message:
+                    logger.debug("Invoking callback with message")
                     self.on_message(message)
             except NotImplementedError:
                 # Expected during development; re-raise to avoid silent failures
