@@ -115,12 +115,6 @@ def test_decoder_parses_valid_message(codec, test_case):
         assert isinstance(message, Message)
         _validate_message(message, test_case.expected, test_case.expected_fields)
 
-def test_encoder_not_implemented(codec):
-    """Test that encode raises NotImplementedError"""
-    message = Message(len=0, checksum=b"", fields={})
-    with pytest.raises(NotImplementedError):
-        codec.encode(message)
-
 def test_temp_converter():
     from hp_ctl.protocol import temp_converter
     assert temp_converter(176) == 48
