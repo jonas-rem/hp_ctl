@@ -7,6 +7,10 @@ import serial
 
 logger = logging.getLogger(__name__)
 
+# Protocol constants
+START_DELIMITER = 0x71
+MESSAGE_MIN_LENGTH = 6
+
 
 class UartReceiver:
     """UART receiver for background listening and message validation.
@@ -20,32 +24,38 @@ class UartReceiver:
         port: str,
         baudrate: int = 9600,
         on_message: Optional[Callable[[bytes], None]] = None,
+        poll_interval: float = 0.1,
     ) -> None:
-        """Initialize UART connection and callback for valid messages.
+        """Initialize UART connection and start listening.
 
         Args:
             port: Serial port path (e.g., '/dev/ttyUSB0').
             baudrate: Baud rate for serial communication. Defaults to 9600.
             on_message: Callback function invoked with validated message bytes.
+            poll_interval: Time in seconds between polling attempts. Defaults to 0.1.
         """
         self.port = port
         self.baudrate = baudrate
-        self.serial_conn: Optional[serial.Serial] = None
-        self.on_message = on_message  # Callback for validated messages
-        self.listening = False
-        self.thread: Optional[threading.Thread] = None
+        self.on_message = on_message
+        self.poll_interval = poll_interval
+        self.listening = True
+        self.serial_conn = serial.Serial(port, baudrate)
+        self.thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self.thread.start()
 
-    def open(self) -> None:
-        """Open UART connection."""
-        self.serial_conn = serial.Serial(self.port, self.baudrate)
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args):
+        """Context manager exit."""
+        self.close()
 
     def close(self) -> None:
         """Close UART connection and stop listening."""
         self.listening = False
-        if self.thread:
-            self.thread.join()
-        if self.serial_conn:
-            self.serial_conn.close()
+        self.thread.join(timeout=1.0)
+        self.serial_conn.close()
 
     def read_message(self) -> bytes:
         """Read a complete message from UART.
@@ -60,15 +70,13 @@ class UartReceiver:
             Complete message bytes (delimiter + length + payload + checksum),
             or empty bytes if connection is closed or timeout occurs.
         """
-        if not self.serial_conn:
-            return b""
 
-        # Wait for start delimiter (0x71)
+        # Wait for start delimiter
         while True:
             byte = self.serial_conn.read(1)
             if not byte:
-                return b""  # Connection closed or timeout
-            if byte[0] == 0x71:
+                return b""
+            if byte[0] == START_DELIMITER:
                 break
 
         # Read length byte
@@ -97,13 +105,10 @@ class UartReceiver:
         Returns:
             True if length is valid, False otherwise.
         """
-        # Minimum: start byte + length + data + checksum
-        if len(message) < 4:
+        if len(message) < MESSAGE_MIN_LENGTH:
             return False
-        # Byte 1 contains the length of the payload
-        declared_length = message[1]
         # Expected: start(1) + length(1) + payload + checksum(1)
-        return len(message) == 1 + 1 + declared_length + 1
+        return len(message) == 3 + message[1]
 
     def validate_crc(self, message: bytes) -> bool:
         """Validate CRC.
@@ -138,24 +143,16 @@ class UartReceiver:
             return message
         return None
 
-    def start_listening(self, poll_interval: float = 0.1) -> None:
-        """Start background listening thread to periodically check for data.
 
-        Args:
-            poll_interval: Time in seconds between polling attempts. Defaults to 0.1.
-        """
         self.listening = True
         self.thread = threading.Thread(target=self._listen_loop, args=(poll_interval,))
         self.thread.start()
 
-    def _listen_loop(self, poll_interval: float) -> None:
+    def _listen_loop(self) -> None:
         """Background loop to check for data and emit via callback.
 
-        Periodically checks for data every poll_interval seconds and invokes
-        the on_message callback with validated messages.
-
-        Args:
-            poll_interval: Time in seconds between polling attempts.
+        Periodically checks for data and invokes the on_message callback
+        with validated messages.
         """
         while self.listening:
             try:
@@ -167,4 +164,4 @@ class UartReceiver:
                 raise
             except Exception as e:  # pylint: disable=broad-except
                 logger.exception("UART error: %s", e)
-            time.sleep(poll_interval)
+            time.sleep(self.poll_interval)

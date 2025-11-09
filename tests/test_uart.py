@@ -39,11 +39,13 @@ def test_uart_receiver_callback(mocker):
     def mock_callback(message: bytes):
         callback_called.append(message)
 
-    receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600, on_message=mock_callback)
-    receiver.open()
-
-    # Start listening briefly
-    receiver.start_listening(poll_interval=0.01)
+    # Thread starts automatically in __init__ with poll_interval
+    receiver = UartReceiver(
+        port="/dev/ttyUSB0",
+        baudrate=9600,
+        on_message=mock_callback,
+        poll_interval=0.01,
+    )
     time.sleep(0.05)  # Allow loop to trigger
     receiver.close()
 
@@ -52,8 +54,13 @@ def test_uart_receiver_callback(mocker):
     assert callback_called[0] == test_message
 
 
-def test_uart_validate_length():
+def test_uart_validate_length(mocker):
     """Test that UART receiver validates message length correctly."""
+    mock_serial = MagicMock()
+    # Return empty bytes so thread doesn't block
+    mock_serial.read.return_value = b""
+    mocker.patch("serial.Serial", return_value=mock_serial)
+
     receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600)
 
     # Valid message
@@ -68,9 +75,16 @@ def test_uart_validate_length():
     length_mismatch = load_test_case("invalid_message_length_mismatch")
     assert receiver.validate_length(length_mismatch) is False
 
+    receiver.close()
 
-def test_uart_validate_crc():
+
+def test_uart_validate_crc(mocker):
     """Test that UART receiver validates checksum correctly."""
+    mock_serial = MagicMock()
+    # Return empty bytes so thread doesn't block
+    mock_serial.read.return_value = b""
+    mocker.patch("serial.Serial", return_value=mock_serial)
+
     receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600)
 
     # Valid message
@@ -81,3 +95,4 @@ def test_uart_validate_crc():
     invalid_checksum = load_test_case("invalid_checksum")
     assert receiver.validate_crc(invalid_checksum) is False
 
+    receiver.close()
