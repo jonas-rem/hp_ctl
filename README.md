@@ -16,44 +16,37 @@ UART. The system still publishes to an MQTT broker.
 - Test coverage via pytest
 - Mockup MQTT broker for testing
 
-## Modules
-
-### protocol.py
-Defines all static protocol data: topic names, byte positions, conversion
-functions, and lookup tables. This is the single source of truth for the
-Panasonic heatpump protocol structure and is imported by both encoder and
-decoder.
-
-### decoder.py
-Reads raw byte arrays from the heatpump and converts them to human-readable
-values using the protocol definitions. Handles special cases like fractional
-temperatures and multi-byte values.
-
-### encoder.py
-Takes human-readable values and command parameters, then converts them to raw
-byte arrays ready to send to the heatpump. Mirrors the decoder logic but in
-reverse.
-
-### test_protocol.py
-Unit tests for protocol data integrity: verifies topic counts match array
-lengths, checks byte position validity, and validates conversion function
-mappings.
-
-### test_decoder.py
-Unit tests for decoding logic: tests individual conversion functions, validates
-multi-byte decoding, and checks special case handling against known heatpump
-responses.
-
-### test_encoder.py
-Unit tests for encoding logic: tests command generation, validates byte
-positioning, and verifies checksums and special encoding rules.
-
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.12 or higher
-- `pip` and `venv`
+- Python 3.12+
+- MQTT broker running on localhost:1883 (or configure in `config.yaml`)
+- Heat pump connected via UART (default: `/dev/ttyUSB0`)
+
+### Architecture
+
+- **`protocol.py`** - Message codec and field specifications
+- **`uart.py`** - UART receiver with validation
+- **`mqtt.py`** - MQTT client wrapper
+- **`homeassistant.py`** - Home Assistant MQTT Discovery mapper
+- **`main.py`** - Application orchestration with retry logic
+- **`config.py`** - Configuration loader
+
+### Configuration
+
+Create a `config.yaml` file in the project root:
+
+```yaml
+uart:
+  port: /dev/ttyUSB0
+  baudrate: 9600
+
+mqtt:
+  broker: localhost
+  port: 1883
+```
+
 
 ### Development Setup
 
@@ -75,13 +68,20 @@ pip install .
 pip install -e git+https://github.com/jonas-rem/hp-ctl.git#egg=hp-ctl
 ```
 
-## Logging
+### Starting the Application
 
-Adjust the log level in pyproject.toml.
+```bash
+python -m hp_ctl
+```
 
-## Testing
+The application will:
+1. Connect to MQTT broker and UART device (retry every 3 s on connection fail)
+2. Publish Home Assistant MQTT Discovery configs on first valid message
+3. Continuously publish state updates to `{device_id}/state/{field}` topics
 
-### With Tox
+### Running Tests
+
+#### With Tox
 
 ```bash
 # Run all checks (tests, lint, type checking)
@@ -94,12 +94,25 @@ tox -e py
 tox -e coverage
 ```
 
-### Directly with Pytest
+#### Directly with Pytest
 
 ```bash
+# All tests
 pytest
+
+# Integration tests only
+pytest tests/test_integration.py -v
+
+# With coverage report
 pytest --cov=hp_ctl --cov-report=html
+
+# Type checking
+mypy src/hp_ctl
 ```
+
+## Logging
+
+Adjust the log level in pyproject.toml.
 
 ## Code Quality
 

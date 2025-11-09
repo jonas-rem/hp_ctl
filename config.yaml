@@ -1,0 +1,7 @@
+uart:
+  port: /dev/ttyUSB0
+  baudrate: 9600
+
+mqtt:
+  broker: localhost
+  port: 1883
