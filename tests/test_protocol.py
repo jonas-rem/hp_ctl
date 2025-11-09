@@ -4,8 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from hp_ctl.decoder import Decoder
-from hp_ctl.message import Message
+from hp_ctl.protocol import MESSAGE_CODEC, Message
 
 
 @dataclass
@@ -14,6 +13,7 @@ class MessageTestCase:
     name: str
     raw_hex: str
     expected: Message
+    expected_fields: set[str]  # Track which fields were explicitly specified
 
 
 def _load_test_cases() -> dict:
@@ -48,6 +48,7 @@ def _load_test_cases() -> dict:
             name=case_id,
             raw_hex=raw_hex,
             expected=expected,
+            expected_fields=set(expected_dict.keys()),
         )
 
     return test_cases
@@ -57,22 +58,17 @@ TEST_CASES = _load_test_cases()
 
 
 @pytest.fixture
-def decoder():
-    return Decoder()
+def codec():
+    return MESSAGE_CODEC
 
 
-def _validate_message(decoded: Message, expected: Message) -> None:
+def _validate_message(decoded: Message, expected: Message, expected_fields: set[str]) -> None:
     """Validate decoded message against expected values.
 
-    Only checks fields that are specified (non-zero/non-empty).
+    Only checks fields that were explicitly specified in the test case.
     """
-    for field_name in expected.__dataclass_fields__:
+    for field_name in expected_fields:
         expected_value = getattr(expected, field_name)
-
-        # Skip unspecified fields (0 for int, b"" for bytes)
-        if expected_value == 0 or expected_value == b"":
-            continue
-
         decoded_value = getattr(decoded, field_name)
         assert decoded_value == expected_value, (
             f"{field_name} mismatch: {decoded_value} != {expected_value}"
@@ -80,13 +76,14 @@ def _validate_message(decoded: Message, expected: Message) -> None:
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES.values(), ids=lambda tc: tc.name)
-def test_decoder_parses_valid_message(decoder, test_case):
+def test_decoder_parses_valid_message(codec, test_case):
     """Test that decoder can parse a valid UART message.
 
     Validates decoded message against expected values from test case.
     """
     raw_bytes = bytes.fromhex(test_case.raw_hex)
-    message = decoder.decode(raw_bytes)
+    message = codec.decode(raw_bytes)
 
     assert isinstance(message, Message)
-    _validate_message(message, test_case.expected)
+    _validate_message(message, test_case.expected, test_case.expected_fields)
+
