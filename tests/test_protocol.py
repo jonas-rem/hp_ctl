@@ -32,15 +32,18 @@ def _load_test_cases() -> dict:
 
         # Build expected Message with only specified fields
         expected_dict = case_data.get("expected", {})
-        message_kwargs = {}
-        for field_name in Message.__dataclass_fields__:
-            if field_name in expected_dict:
-                value = expected_dict[field_name]
-                # Convert hex strings to bytes for bytes fields
+        message_kwargs = {"fields": {}}
+
+        for field_name, value in expected_dict.items():
+            if field_name in ("len", "checksum"):
+                # Message-level fields
                 if field_name == "checksum" and isinstance(value, str):
                     message_kwargs[field_name] = bytes.fromhex(value)
                 else:
                     message_kwargs[field_name] = value
+            else:
+                # Decoded fields go in fields dict
+                message_kwargs["fields"][field_name] = value
 
         expected = Message(**message_kwargs)
 
@@ -67,12 +70,21 @@ def _validate_message(decoded: Message, expected: Message, expected_fields: set[
 
     Only checks fields that were explicitly specified in the test case.
     """
+    # Check message-level fields (len, checksum)
     for field_name in expected_fields:
-        expected_value = getattr(expected, field_name)
-        decoded_value = getattr(decoded, field_name)
-        assert decoded_value == expected_value, (
-            f"{field_name} mismatch: {decoded_value} != {expected_value}"
-        )
+        if field_name in ('len', 'checksum'):
+            expected_value = getattr(expected, field_name)
+            decoded_value = getattr(decoded, field_name)
+            assert decoded_value == expected_value, (
+                f"{field_name} mismatch: {decoded_value} != {expected_value}"
+            )
+        elif field_name in expected.fields:
+            # Check decoded fields dict
+            expected_value = expected.fields[field_name]
+            decoded_value = decoded.fields.get(field_name)
+            assert decoded_value == expected_value, (
+                f"{field_name} mismatch: {decoded_value} != {expected_value}"
+            )
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES.values(), ids=lambda tc: tc.name)
@@ -86,4 +98,3 @@ def test_decoder_parses_valid_message(codec, test_case):
 
     assert isinstance(message, Message)
     _validate_message(message, test_case.expected, test_case.expected_fields)
-

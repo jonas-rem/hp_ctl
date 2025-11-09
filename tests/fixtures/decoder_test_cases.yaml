@@ -23,3 +23,5 @@ test_cases:
     expected:
       len: 200
       checksum: "77"
+      quiet_mode : "Off"
+      zone1_actual_temp: 48
