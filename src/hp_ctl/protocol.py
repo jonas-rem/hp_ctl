@@ -17,9 +17,7 @@ class FieldSpec:
 
 @dataclass
 class Message:
-    """Represents a decoded message"""
-    len: int
-    checksum: bytes
+    """Represents a decoded message with field values."""
     fields: dict
 
 
@@ -32,45 +30,15 @@ class MessageCodec:
     def decode(self, raw_msg: bytes) -> Message:
         """Decode a raw UART message into a Message object.
 
-        Message format:
-        - Bytes 0-1: Length (2 bytes, big-endian)
-        - Bytes 2 to 2+len-1: Data
-        - Last byte: Checksum
+        Assumes the message has already been validated by the UART layer
+        (length and checksum are correct).
 
         Args:
-            raw_msg: Raw message bytes
+            raw_msg: Raw message bytes (pre-validated)
 
         Returns:
             Decoded Message object
-
-        Raises:
-            ValueError: If message format is invalid or checksum is incorrect
         """
-        if len(raw_msg) < 4:
-            raise ValueError(
-                f"Invalid message len: {len(raw_msg)}, minimum 4"
-            )
-
-        msg_len = raw_msg[1]
-
-        # Validate msg len: 2 (delim + len) + msg_len (data) + 1 (checksum)
-        expected_total = 2 + msg_len + 1
-        if len(raw_msg) != expected_total:
-            raise ValueError(
-                f"Invalid message len: {len(raw_msg)}, expected {expected_total}"
-            )
-
-        # Extract components
-        checksum = raw_msg[-1:]
-
-        # Validate checksum
-        calculated_checksum = self._calculate_checksum(raw_msg[:-1])
-        if calculated_checksum != checksum[0]:
-            raise ValueError(
-                f"Invalid checksum: {checksum[0]:02x}, "
-                f"expected {calculated_checksum:02x}"
-            )
-
         # Parse fields from data
         values = {}
         for field in self.fields:
@@ -80,13 +48,7 @@ class MessageCodec:
             )
             values[field.name] = converted_value
 
-        # Unpack parsed field values as kwargs to Message constructor
-        # (e.g., quiet_mode from FieldSpec automatically maps to Message.quiet_mode)
-        return Message(
-            len=msg_len,
-            checksum=checksum,
-            fields=values,
-        )
+        return Message(fields=values)
 
     def encode(self, message: Message) -> bytes:
         """Encode a Message into binary data using field definitions."""
@@ -107,16 +69,6 @@ class MessageCodec:
             mask = (1 << field.bit_length) - 1
             return (byte_val >> field.bit_offset) & mask
         return byte_val
-
-    def _calculate_checksum(self, data: bytes) -> int:
-        """Calculate checksum for message data.
-
-        Checksum is calculated so that sum of all bytes (including checksum) & 0xFF == 0.
-        checksum = (256 - sum(data_bytes)) & 0xFF
-        """
-        data_sum = sum(data) & 0xFF
-        checksum = (256 - data_sum) & 0xFF
-        return checksum
 
 
 def temp_converter(value: int) -> float:

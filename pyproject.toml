@@ -12,12 +12,18 @@ license = {text = "MIT"}
 authors = [{name = "Your Name", email = "your.email@example.com"}]
 keywords = ["hp", "control"]
 
+dependencies = [
+    "pyserial",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-mock>=3.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
+    "types-pyserial>=0.1.0",
 ]
 
 [tool.setuptools]
