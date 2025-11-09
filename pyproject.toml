@@ -25,6 +25,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0",
     "types-pyserial>=0.1.0",
+    "types-PyYAML",
 ]
 
 [tool.setuptools]
