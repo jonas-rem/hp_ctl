@@ -19,6 +19,7 @@ class FieldSpec:
     ha_class: Optional[str] = None
     ha_state_class: Optional[str] = None
     ha_icon: Optional[str] = None
+    skip_zero: bool = True  # Skip 0x00 values (usually means no data)
 
 
 @dataclass
@@ -50,9 +51,33 @@ class MessageCodec:
         values = {}
         for field in self.fields:
             raw_value = self._extract_value(raw_msg, field)
-            converted_value = (
-                field.converter(raw_value) if field.converter else raw_value
-            )
+
+            # Skip fields with 0x00 (no data available) if skip_zero is True
+            if raw_value == 0 and field.skip_zero:
+                logger.debug("Field %s: raw=0x0 (skipping - no data)", field.name)
+                continue
+
+            try:
+                converted_value = (
+                    field.converter(raw_value) if field.converter else raw_value
+                )
+            except (ValueError, KeyError) as e:
+                # Converter rejected the value (invalid/placeholder data)
+                logger.debug("Field %s: raw=0x%x (skipping - %s)", field.name, raw_value, e)
+                continue
+
+            # Sanity check for temperature fields: skip if outside reasonable range
+            if field.ha_class == "temperature" and isinstance(converted_value, (int, float)):
+                if converted_value < -50 or converted_value > 100:
+                    logger.debug(
+                        "Field %s: raw=0x%x, converted=%s %s (skipping - out of range)",
+                        field.name,
+                        raw_value,
+                        converted_value,
+                        field.unit or "",
+                    )
+                    continue
+
             values[field.name] = converted_value
             logger.debug(
                 "Field %s: raw=0x%x, converted=%s %s",
@@ -66,7 +91,8 @@ class MessageCodec:
         lines = [f"{len(values)} fields:"]
         for name, value in values.items():
             unit = next((f.unit for f in self.fields if f.name == name), '') or ''
-            lines.append(f"  {name:<30} {value}{unit}")
+            unit_str = f" {unit}" if unit else ""
+            lines.append(f"  {name:<30} {value}{unit_str}")
         logger.info("\n".join(lines))
 
         logger.debug("Message decoded successfully: %d fields", len(values))
@@ -124,8 +150,99 @@ def quiet_mode_converter(value: int) -> str:
     return quiet_modes.get(value, f"Unknown({value})")
 
 def power_converter(value: int) -> float:
-    """Convert power: (value - 1) / 5"""
     return (value - 1) / 5
+
+def frequency_converter(value: int) -> int:
+    """Convert compressor frequency: value - 1"""
+    return value - 1
+
+def flow_rate_converter_high(value: int) -> float:
+    """Convert high byte of flow rate: (value - 1) / 256
+
+    Note: This is just the fractional part. Needs to be combined with low byte.
+    For now, we'll handle each byte separately in extraction.
+    """
+    return (value - 1) / 256
+
+def pump_speed_converter(value: int) -> int:
+    """Convert pump speed: (value - 1) * 50"""
+    return (value - 1) * 50
+
+def hp_status_converter(value: int) -> str:
+    """Convert heat pump on/off status from byte 4
+
+    0x55 = heat pump off, 0x56 = heat pump on
+    Other values: 0x96=Force DHW on, 0x65=Water pump on, 0x75=Air Purge, 0xF0=Pump Down
+
+    Raises ValueError for invalid values (like 0x8a in no-data packets) to trigger filtering
+    """
+    status_map = {
+        0x55: "Off",
+        0x56: "On",
+        0x96: "Force DHW",
+        0x65: "Service: Water pump",
+        0x75: "Service: Air purge",
+        0xF0: "Service: Pump down",
+    }
+    if value not in status_map:
+        raise ValueError(f"Invalid hp_status value: 0x{value:02x}")
+    return status_map[value]
+
+def defrost_converter(value: int) -> str:
+    """Convert defrost status and 3-way valve from byte 111
+
+    Right 2 bits: 3-Way Valve (0b10=DHW, 0b01=Room)
+    Next 2 bits: Defrost state (0b01=not active, 0b10=active)
+    """
+    valve_bits = value & 0b11
+    defrost_bits = (value >> 2) & 0b11
+
+    valve = "DHW" if valve_bits == 0b10 else "Room" if valve_bits == 0b01 else "Unknown"
+    defrost = "Active" if defrost_bits == 0b10 else "Inactive"
+
+    return f"Valve:{valve}, Defrost:{defrost}"
+
+def operating_mode_converter(value: int) -> str:
+    """Convert operating mode from byte 6
+
+    Bit 1: Zone2 (0=off, 1=on)
+    Bit 2: Zone1 (0=off, 1=on)
+    3rd & 4th bit: DHW (b01=off, b10=on)
+    5th-8th bit: Mode (b0001=DHW only, b0010=Heat, b0011=Cool, b0110=Heat+Zone, b1001=Auto(Heat), b1010=Auto(Cool))
+    """
+    zone2 = value & 0b1
+    zone1 = (value >> 1) & 0b1
+    dhw_bits = (value >> 2) & 0b11
+    mode_bits = (value >> 4) & 0b1111
+
+    dhw_status = "on" if dhw_bits == 0b10 else "off"
+
+    mode_map = {
+        0b0001: "DHW only",
+        0b0010: "Heat",
+        0b0011: "Cool",
+        0b0101: "Heat",  # Heat with zones
+        0b0110: "Heat",  # Heat with zones
+        0b0111: "Cool",  # Cool with zones
+        0b1001: "Auto(Heat)",
+        0b1010: "Auto(Cool)",
+    }
+
+    # Reject mode_bits 0 (Off) as it appears in no-data packets
+    # Use compressor_frequency or hp_status to determine if HP is actually off
+    if mode_bits not in mode_map:
+        raise ValueError(f"Invalid operating_mode: mode_bits={mode_bits:04b}")
+
+    mode = mode_map[mode_bits]
+
+    zones = []
+    if zone1:
+        zones.append("Z1")
+    if zone2:
+        zones.append("Z2")
+    zone_info = f" [{'+'.join(zones)}]" if zones else ""
+
+    return f"{mode}{zone_info}, DHW {dhw_status}"
 
 MESSAGE_FIELDS = [
     FieldSpec(
@@ -183,6 +300,123 @@ MESSAGE_FIELDS = [
         ha_state_class="measurement",
         ha_icon="mdi:lightning-bolt",
     ),
+    FieldSpec(
+        name="outdoor_temp",
+        byte_offset=142,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="outlet_water_temp",
+        byte_offset=144,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="compressor_frequency",
+        byte_offset=166,
+        converter=frequency_converter,
+        unit="Hz",
+        ha_class="frequency",
+        ha_state_class="measurement",
+        ha_icon="mdi:sine-wave",
+    ),
+    FieldSpec(
+        name="dhw_target_temp",
+        byte_offset=42,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="inlet_water_temp",
+        byte_offset=143,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="pump_flow_rate",
+        byte_offset=170,
+        byte_length=2,
+        converter=lambda v: (v - 1) / 256,
+        unit="L/min",
+        ha_class=None,
+        ha_state_class="measurement",
+        ha_icon="mdi:pump",
+    ),
+    FieldSpec(
+        name="operating_mode",
+        byte_offset=6,
+        converter=operating_mode_converter,
+        unit="",
+        ha_class="enum",
+        ha_icon="mdi:heating-coil",
+    ),
+    FieldSpec(
+        name="dhw_actual_temp",
+        byte_offset=141,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="pump_speed",
+        byte_offset=171,
+        converter=pump_speed_converter,
+        unit="RPM",
+        ha_class=None,
+        ha_state_class="measurement",
+        ha_icon="mdi:pump",
+    ),
+    FieldSpec(
+        name="hp_status",
+        byte_offset=4,
+        converter=hp_status_converter,
+        unit="",
+        ha_class="enum",
+        ha_icon="mdi:power",
+        skip_zero=False,  # 0x00 might be a valid status value
+    ),
+    FieldSpec(
+        name="defrost_status",
+        byte_offset=111,
+        converter=defrost_converter,
+        unit="",
+        ha_class="enum",
+        ha_icon="mdi:snowflake-melt",
+    ),
 ]
 
 MESSAGE_CODEC = MessageCodec(MESSAGE_FIELDS)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
