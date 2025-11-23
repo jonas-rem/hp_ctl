@@ -15,6 +15,7 @@ keywords = ["hp", "control"]
 dependencies = [
     "pyserial",
     "paho-mqtt>=2.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -69,4 +70,5 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
+
 
