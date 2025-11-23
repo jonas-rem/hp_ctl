@@ -27,7 +27,6 @@ class Application:
             config_path: Path to config.yaml file.
         """
         self.config = load_config(config_path)
-        self.discovery_published = False
         self.mqtt_client: Optional[MqttClient] = None
         self.uart_receiver: Optional[UartReceiver] = None
         self.ha_mapper = HomeAssistantMapper()
@@ -42,6 +41,20 @@ class Application:
         self.shutdown()
         sys.exit(0)
 
+    def _publish_discovery(self) -> None:
+        """Publish Home Assistant discovery configs."""
+        if self.mqtt_client:
+            logger.info("Publishing Home Assistant discovery configs")
+            discovery_configs = self.ha_mapper.message_to_ha_discovery(MESSAGE_FIELDS)
+            for topic, payload in discovery_configs.items():
+                self.mqtt_client.publish(topic, payload)
+            logger.info("Published %d discovery configs", len(discovery_configs))
+
+    def _on_mqtt_connect(self) -> None:
+        """Callback invoked when MQTT connects/reconnects."""
+        logger.info("MQTT connected, publishing discovery configs")
+        self._publish_discovery()
+
     def _on_uart_message(self, raw_msg: bytes) -> None:
         """Callback invoked when UART receives a valid message.
 
@@ -51,16 +64,6 @@ class Application:
         try:
             # Decode message
             message = MESSAGE_CODEC.decode(raw_msg)
-
-            return
-
-            # Publish discovery configs once on first message
-            if not self.discovery_published and self.mqtt_client:
-                logger.info("Publishing Home Assistant discovery configs")
-                discovery_configs = self.ha_mapper.message_to_ha_discovery(MESSAGE_FIELDS)
-                for topic, payload in discovery_configs.items():
-                    self.mqtt_client.publish(topic, payload)
-                self.discovery_published = True
 
             # Publish state updates
             if self.mqtt_client:
@@ -79,13 +82,14 @@ class Application:
         while MAX_RETRIES is None or retry_count < MAX_RETRIES:
             try:
                 # Initialize MQTT
-                #mqtt_config = self.config["mqtt"]
-                #self.mqtt_client = MqttClient(
-                #    broker=mqtt_config["broker"],
-                #    port=mqtt_config["port"],
-                #)
-                #self.mqtt_client.connect()
-                #logger.info("MQTT client connected")
+                mqtt_config = self.config["mqtt"]
+                self.mqtt_client = MqttClient(
+                    broker=mqtt_config["broker"],
+                    port=mqtt_config["port"],
+                    on_connect=self._on_mqtt_connect,
+                )
+                self.mqtt_client.connect()
+                logger.info("MQTT client connected")
 
                 # Initialize UART with callback
                 uart_config = self.config["uart"]
@@ -137,7 +141,7 @@ class Application:
 def main() -> None:
     """Entry point for the application."""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("hp_ctl.log"),
@@ -150,6 +154,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
 
 
 
