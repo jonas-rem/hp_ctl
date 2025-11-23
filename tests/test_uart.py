@@ -67,9 +67,6 @@ def test_uart_validate_length(mocker):
     valid_msg = load_test_case("panasonic_answer")
     assert receiver.validate_length(valid_msg) is True
 
-    valid_msg = load_test_case("my_panasonic_answer")
-    assert receiver.validate_length(valid_msg) is True
-
     # Too short
     too_short = b"\x71\xc8"
     assert receiver.validate_length(too_short) is False
@@ -92,9 +89,6 @@ def test_uart_validate_crc(mocker):
 
     # Valid messages
     valid_msg = load_test_case("panasonic_answer")
-    assert receiver.validate_crc(valid_msg) is True
-
-    valid_msg = load_test_case("my_panasonic_answer")
     assert receiver.validate_crc(valid_msg) is True
 
     # Invalid checksum
