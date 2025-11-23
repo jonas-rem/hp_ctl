@@ -51,7 +51,8 @@ class Application:
         try:
             # Decode message
             message = MESSAGE_CODEC.decode(raw_msg)
-            logger.debug("Message decoded: %d fields", len(message.fields))
+
+            return
 
             # Publish discovery configs once on first message
             if not self.discovery_published and self.mqtt_client:
@@ -78,13 +79,13 @@ class Application:
         while MAX_RETRIES is None or retry_count < MAX_RETRIES:
             try:
                 # Initialize MQTT
-                mqtt_config = self.config["mqtt"]
-                self.mqtt_client = MqttClient(
-                    broker=mqtt_config["broker"],
-                    port=mqtt_config["port"],
-                )
-                self.mqtt_client.connect()
-                logger.info("MQTT client connected")
+                #mqtt_config = self.config["mqtt"]
+                #self.mqtt_client = MqttClient(
+                #    broker=mqtt_config["broker"],
+                #    port=mqtt_config["port"],
+                #)
+                #self.mqtt_client.connect()
+                #logger.info("MQTT client connected")
 
                 # Initialize UART with callback
                 uart_config = self.config["uart"]
@@ -138,6 +139,10 @@ def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("hp_ctl.log"),
+            logging.StreamHandler(sys.stdout)
+        ]
     )
     app = Application(config_path="config.yaml")
     app.run()
@@ -145,4 +150,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
 

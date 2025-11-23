@@ -62,6 +62,13 @@ class MessageCodec:
                 field.unit or "",
             )
 
+        # Log all converted values in a readable format
+        lines = [f"{len(values)} fields:"]
+        for name, value in values.items():
+            unit = next((f.unit for f in self.fields if f.name == name), '') or ''
+            lines.append(f"  {name:<30} {value}{unit}")
+        logger.info("\n".join(lines))
+
         logger.debug("Message decoded successfully: %d fields", len(values))
         return Message(fields=values)
 

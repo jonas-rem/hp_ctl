@@ -39,9 +39,16 @@ class UartReceiver:
         self.on_message = on_message
         self.poll_interval = poll_interval
         self.listening = True
-        logger.debug("Opening UART connection: %s at %d baud", port, baudrate)
-        self.serial_conn = serial.Serial(port, baudrate)
-        logger.info("UART connection opened: %s", port)
+        logger.debug("Opening UART connection: %s at %d baud (9600E1)", port, baudrate)
+        self.serial_conn = serial.Serial(
+            port=port,
+            baudrate=baudrate,
+            parity=serial.PARITY_EVEN,
+            stopbits=serial.STOPBITS_ONE,
+            bytesize=serial.EIGHTBITS,
+            timeout=1.0,
+        )
+        logger.info("UART connection opened: %s (9600E1)", port)
         self.thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.thread.start()
         logger.debug("Listening thread started")
@@ -124,7 +131,6 @@ class UartReceiver:
 
         Computes and verifies the checksum of the message. The checksum is
         calculated so that the sum of all bytes (including checksum) & 0xFF == 0.
-        Formula: checksum = (256 - sum(data_bytes)) & 0xFF
 
         Args:
             message: Message bytes to validate.
@@ -135,23 +141,30 @@ class UartReceiver:
         if len(message) < 2:
             logger.warning("CRC validation failed: message too short")
             return False
-        # Checksum is the last byte
-        expected_checksum = message[-1]
-        # Compute sum-based checksum of all bytes except the checksum
-        data_sum = sum(message[:-1])
-        computed_checksum = (256 - data_sum) & 0xFF
-        valid = computed_checksum == expected_checksum
+
+        # Sum ALL bytes including the checksum
+        total_sum = sum(message) & 0xFF
+        valid = total_sum == 0
+
         if not valid:
-            logger.warning("CRC validation failed: expected=0x%02x, computed=0x%02x", expected_checksum, computed_checksum)
+            logger.warning(
+                "CRC validation failed: sum(all bytes) & 0xFF = 0x%02x (expected 0x00), "
+                "checksum byte = 0x%02x",
+                total_sum,
+                message[-1]
+            )
         return valid
 
     def receive_and_validate(self) -> Optional[bytes]:
         """Receive a message and validate it.
 
         Returns:
-            Validated message bytes, or None if validation fails.
+            Validated message bytes, or None if validation fails or no data available.
         """
         message = self.read_message()
+        if not message:
+            # No data available (timeout or connection closed)
+            return None
         if self.validate_length(message) and self.validate_crc(message):
             logger.debug("Message parsed: %s", message.hex())
             return message
@@ -176,3 +189,6 @@ class UartReceiver:
             except Exception as e:  # pylint: disable=broad-except
                 logger.exception("UART error: %s", e)
             time.sleep(self.poll_interval)
+
+
+

@@ -63,8 +63,11 @@ def test_uart_validate_length(mocker):
 
     receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600)
 
-    # Valid message
+    # Valid messages
     valid_msg = load_test_case("panasonic_answer")
+    assert receiver.validate_length(valid_msg) is True
+
+    valid_msg = load_test_case("my_panasonic_answer")
     assert receiver.validate_length(valid_msg) is True
 
     # Too short
@@ -87,8 +90,11 @@ def test_uart_validate_crc(mocker):
 
     receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600)
 
-    # Valid message
+    # Valid messages
     valid_msg = load_test_case("panasonic_answer")
+    assert receiver.validate_crc(valid_msg) is True
+
+    valid_msg = load_test_case("my_panasonic_answer")
     assert receiver.validate_crc(valid_msg) is True
 
     # Invalid checksum
