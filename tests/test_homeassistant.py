@@ -1,7 +1,7 @@
 import pytest
 
 from hp_ctl.homeassistant import HomeAssistantMapper
-from hp_ctl.protocol import MESSAGE_FIELDS, Message
+from hp_ctl.protocol import EXTRA_FIELDS, STANDARD_FIELDS, Message
 
 
 @pytest.fixture
@@ -12,9 +12,10 @@ def mapper():
 
 def test_discovery_config_structure(mapper):
     """Test that discovery config has required Home Assistant fields."""
-    configs = mapper.message_to_ha_discovery(MESSAGE_FIELDS)
+    all_fields = STANDARD_FIELDS + EXTRA_FIELDS
+    configs = mapper.message_to_ha_discovery(all_fields)
 
-    assert len(configs) == len(MESSAGE_FIELDS)
+    assert len(configs) == len(all_fields)
 
     for topic, config in configs.items():
         assert topic.startswith("homeassistant/sensor/test_aquarea/")
@@ -26,10 +27,11 @@ def test_discovery_config_structure(mapper):
 
 def test_discovery_config_uses_field_metadata(mapper):
     """Test that discovery config uses FieldSpec metadata."""
-    configs = mapper.message_to_ha_discovery(MESSAGE_FIELDS)
+    all_fields = STANDARD_FIELDS + EXTRA_FIELDS
+    configs = mapper.message_to_ha_discovery(all_fields)
 
     # Find temperature field
-    temp_field = next(f for f in MESSAGE_FIELDS if f.name == "zone1_actual_temp")
+    temp_field = next(f for f in STANDARD_FIELDS if f.name == "zone1_actual_temp")
     temp_config = next(c for c in configs.values() if "zone1_actual_temp" in c["unique_id"])
 
     assert temp_config["unit_of_measurement"] == temp_field.unit
@@ -40,17 +42,20 @@ def test_discovery_config_uses_field_metadata(mapper):
 
 def test_state_updates_from_message(mapper):
     """Test state updates generation from decoded message."""
-    message = Message(fields={
-        "quiet_mode": "Off",
-        "zone1_actual_temp": 48,
-        "heat_power_consumption": 0.0,
-    })
+    message = Message(
+        packet_type=0x10,
+        fields={
+            "quiet_mode": "Off",
+            "zone1_actual_temp": 48,
+            "heat_power_consumption": 0.0,
+        }
+    )
 
     updates = mapper.message_to_state_updates(message)
 
     assert updates["test_aquarea/state/quiet_mode"] == "Off"
-    assert updates["test_aquarea/state/zone1_actual_temp"] == 48
-    assert updates["test_aquarea/state/heat_power_consumption"] == 0.0
+    assert updates["test_aquarea/state/zone1_actual_temp"] == "48"
+    assert updates["test_aquarea/state/heat_power_consumption"] == "0.0"
 
 
 def test_default_device_config():

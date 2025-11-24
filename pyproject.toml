@@ -36,6 +36,9 @@ hp-ctl = "hp_ctl.main:main"
 package-dir = {"" = "src"}
 packages = ["hp_ctl"]
 
+[tool.setuptools.package-data]
+hp_ctl = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
