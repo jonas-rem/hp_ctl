@@ -61,6 +61,33 @@ pip install tox
 
 ### Production Installation
 
+#### System Service Installation
+
+```bash
+# Configure your settings
+cp config.yaml.example config.yaml
+nano config.yaml
+
+# Run installation script
+sudo ./install.sh
+
+# Add service user to dialout group for UART access
+sudo usermod -a -G dialout hpctl
+
+# Start the service
+sudo systemctl start hp-ctl
+
+# Check status
+sudo systemctl status hp-ctl
+
+# View logs
+sudo journalctl -u hp-ctl -f
+```
+
+The service will automatically start on boot.
+
+#### Manual Installation
+
 ```bash
 # Install from local
 pip install .
@@ -71,7 +98,13 @@ pip install -e git+https://github.com/jonas-rem/hp-ctl.git#egg=hp-ctl
 ### Starting the Application
 
 ```bash
+# If installed as system service
+sudo systemctl start hp-ctl
+
+# If installed manually
 python -m hp_ctl
+# Or use the command directly
+hp-ctl
 ```
 
 The application will:
