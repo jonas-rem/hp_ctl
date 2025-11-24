@@ -84,7 +84,7 @@ class Application:
                 )
                 self.mqtt_client.connect()
                 logger.info("MQTT client connected")
-                
+
                 # Publish Home Assistant discovery configs once at startup
                 self._publish_discovery()
 

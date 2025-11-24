@@ -168,6 +168,14 @@ def pump_speed_converter(value: int) -> int:
     """Convert pump speed: (value - 1) * 50"""
     return (value - 1) * 50
 
+def hp_power_converter(value: int) -> int:
+    """Convert heat pump power: value - 1"""
+    return value - 1
+
+def fan_speed_converter(value: int) -> int:
+    """Convert fan motor speed: (value - 1) * 10"""
+    return (value - 1) * 10
+
 def hp_status_converter(value: int) -> str:
     """Convert heat pump on/off status from byte 4
 
@@ -337,6 +345,15 @@ MESSAGE_FIELDS = [
         ha_icon="mdi:thermometer",
     ),
     FieldSpec(
+        name="zone1_target_temp",
+        byte_offset=147,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
         name="inlet_water_temp",
         byte_offset=143,
         converter=temp_converter,
@@ -398,9 +415,31 @@ MESSAGE_FIELDS = [
         ha_class="enum",
         ha_icon="mdi:snowflake-melt",
     ),
+    FieldSpec(
+        name="hp_power",
+        byte_offset=191,
+        converter=hp_power_converter,
+        unit="kW",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+    ),
+    FieldSpec(
+        name="fan1_motor_speed",
+        byte_offset=173,
+        converter=fan_speed_converter,
+        unit="RPM",
+        ha_class=None,
+        ha_state_class="measurement",
+        ha_icon="mdi:fan",
+    ),
 ]
 
 MESSAGE_CODEC = MessageCodec(MESSAGE_FIELDS)
+
+
+
+
 
 
 
