@@ -42,18 +42,13 @@ class Application:
         sys.exit(0)
 
     def _publish_discovery(self) -> None:
-        """Publish Home Assistant discovery configs."""
+        """Publish Home Assistant discovery configs (once at startup)."""
         if self.mqtt_client:
             logger.info("Publishing Home Assistant discovery configs")
             discovery_configs = self.ha_mapper.message_to_ha_discovery(MESSAGE_FIELDS)
             for topic, payload in discovery_configs.items():
                 self.mqtt_client.publish(topic, payload)
             logger.info("Published %d discovery configs", len(discovery_configs))
-
-    def _on_mqtt_connect(self) -> None:
-        """Callback invoked when MQTT connects/reconnects."""
-        logger.info("MQTT connected, publishing discovery configs")
-        self._publish_discovery()
 
     def _on_uart_message(self, raw_msg: bytes) -> None:
         """Callback invoked when UART receives a valid message.
@@ -86,10 +81,12 @@ class Application:
                 self.mqtt_client = MqttClient(
                     broker=mqtt_config["broker"],
                     port=mqtt_config["port"],
-                    on_connect=self._on_mqtt_connect,
                 )
                 self.mqtt_client.connect()
                 logger.info("MQTT client connected")
+                
+                # Publish Home Assistant discovery configs once at startup
+                self._publish_discovery()
 
                 # Initialize UART with callback
                 uart_config = self.config["uart"]
