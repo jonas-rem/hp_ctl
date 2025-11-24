@@ -158,13 +158,17 @@ def frequency_converter(value: int) -> int:
     """Convert compressor frequency: value - 1"""
     return value - 1
 
-def flow_rate_converter_high(value: int) -> float:
-    """Convert high byte of flow rate: (value - 1) / 256
+def pump_flow_rate_converter(value: int) -> float:
+    """Convert pump flow rate from 16-bit little-endian value.
 
-    Note: This is just the fractional part. Needs to be combined with low byte.
-    For now, we'll handle each byte separately in extraction.
+    Byte 170 (low byte): integer part of flow rate
+    Byte 169 (high byte): fractional part = (value - 1) / 256
+
+    Formula: low_byte + (high_byte - 1) / 256
     """
-    return (value - 1) / 256
+    low_byte = value & 0xFF
+    high_byte = (value >> 8) & 0xFF
+    return low_byte + (high_byte - 1) / 256
 
 def pump_speed_converter(value: int) -> int:
     """Convert pump speed: (value - 1) * 50"""
@@ -341,7 +345,7 @@ STANDARD_FIELDS = [
         name="pump_flow_rate",
         byte_offset=170,
         byte_length=2,
-        converter=lambda v: (v - 1) / 256,
+        converter=pump_flow_rate_converter,
         unit="L/min",
         ha_class=None,
         ha_state_class="measurement",
@@ -519,3 +523,6 @@ class HeatPumpProtocol:
 
 
 PROTOCOL = HeatPumpProtocol()
+
+
+
