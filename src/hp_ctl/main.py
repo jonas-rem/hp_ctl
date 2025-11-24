@@ -7,7 +7,7 @@ from typing import Optional
 from hp_ctl.config import load_config
 from hp_ctl.homeassistant import HomeAssistantMapper
 from hp_ctl.mqtt import MqttClient
-from hp_ctl.protocol import PROTOCOL, STANDARD_FIELDS, EXTRA_FIELDS
+from hp_ctl.protocol import EXTRA_FIELDS, PROTOCOL, STANDARD_FIELDS
 from hp_ctl.uart import UartReceiver
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class Application:
         self.mqtt_client: Optional[MqttClient] = None
         self.uart_receiver: Optional[UartReceiver] = None
         self.ha_mapper = HomeAssistantMapper()
+        self.discovery_published = False
 
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -43,7 +44,7 @@ class Application:
 
     def _publish_discovery(self) -> None:
         """Publish Home Assistant discovery configs (once at startup)."""
-        if self.mqtt_client:
+        if self.mqtt_client and not self.discovery_published:
             logger.info("Publishing Home Assistant discovery configs")
             # Publish configs for both standard and extra fields
             all_fields = STANDARD_FIELDS + EXTRA_FIELDS
@@ -51,6 +52,7 @@ class Application:
             for topic, payload in discovery_configs.items():
                 self.mqtt_client.publish(topic, payload)
             logger.info("Published %d discovery configs", len(discovery_configs))
+            self.discovery_published = True
 
     def _on_uart_message(self, raw_msg: bytes) -> None:
         """Callback invoked when UART receives a valid message.
@@ -59,6 +61,10 @@ class Application:
             raw_msg: Raw validated message bytes from UART.
         """
         try:
+            # Publish discovery on first message
+            if not self.discovery_published:
+                self._publish_discovery()
+
             # Decode message
             message = PROTOCOL.decode(raw_msg)
 
@@ -153,12 +159,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-

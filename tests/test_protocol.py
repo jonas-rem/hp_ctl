@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from hp_ctl.protocol import MESSAGE_CODEC, Message
+from hp_ctl.protocol import PROTOCOL, Message
 
 
 @dataclass
@@ -41,10 +41,15 @@ def _load_test_cases() -> dict:
 
         # Build expected Message with only specified fields
         expected_dict = case_data.get("expected", {})
-        message_kwargs = {"fields": {}}
+
+        # Extract packet_type if specified, default to 0x10 for backward
+        # compatibility
+        packet_type = expected_dict.get("packet_type", 0x10)
+
+        message_kwargs = {"packet_type": packet_type, "fields": {}}
 
         for field_name, value in expected_dict.items():
-            if field_name not in ("len", "checksum"):
+            if field_name not in ("len", "checksum", "packet_type"):
                 # Only decoded fields go in fields dict
                 # (len and checksum are validated by UART layer, not protocol layer)
                 message_kwargs["fields"][field_name] = value
@@ -65,8 +70,8 @@ TEST_CASES = _load_test_cases()
 
 
 @pytest.fixture
-def codec():
-    return MESSAGE_CODEC
+def protocol():
+    return PROTOCOL
 
 
 def _validate_message(decoded: Message, expected: Message, expected_fields: set[str]) -> None:
@@ -75,9 +80,15 @@ def _validate_message(decoded: Message, expected: Message, expected_fields: set[
     Only checks fields that were explicitly specified in the test case.
     Note: len and checksum are validated by the UART layer, not the protocol layer.
     """
+    # Check packet_type if specified
+    if 'packet_type' in expected_fields:
+        assert decoded.packet_type == expected.packet_type, (
+            f"packet_type mismatch: 0x{decoded.packet_type:02x} != 0x{expected.packet_type:02x}"
+        )
+
     # Check decoded fields dict
     for field_name in expected_fields:
-        if field_name not in ('len', 'checksum'):
+        if field_name not in ('len', 'checksum', 'packet_type'):
             expected_value = expected.fields.get(field_name)
             decoded_value = decoded.fields.get(field_name)
             assert decoded_value == expected_value, (
@@ -86,10 +97,10 @@ def _validate_message(decoded: Message, expected: Message, expected_fields: set[
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES.values(), ids=lambda tc: tc.name)
-def test_decoder_parses_valid_message(codec, test_case):
+def test_decoder_parses_valid_message(protocol, test_case):
     """Test that decoder can parse a valid UART message."""
     raw_bytes = bytes.fromhex(test_case.raw_hex)
-    message = codec.decode(raw_bytes)
+    message = protocol.decode(raw_bytes)
     assert isinstance(message, Message)
     _validate_message(message, test_case.expected, test_case.expected_fields)
 
