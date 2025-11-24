@@ -29,6 +29,9 @@ dev = [
     "types-PyYAML",
 ]
 
+[project.scripts]
+hp-ctl = "hp_ctl.main:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["hp_ctl"]

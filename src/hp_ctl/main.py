@@ -4,11 +4,11 @@ import sys
 import time
 from typing import Optional
 
-from src.hp_ctl.config import load_config
-from src.hp_ctl.homeassistant import HomeAssistantMapper
-from src.hp_ctl.mqtt import MqttClient
-from src.hp_ctl.protocol import MESSAGE_CODEC, MESSAGE_FIELDS
-from src.hp_ctl.uart import UartReceiver
+from hp_ctl.config import load_config
+from hp_ctl.homeassistant import HomeAssistantMapper
+from hp_ctl.mqtt import MqttClient
+from hp_ctl.protocol import MESSAGE_CODEC, MESSAGE_FIELDS
+from hp_ctl.uart import UartReceiver
 
 logger = logging.getLogger(__name__)
 

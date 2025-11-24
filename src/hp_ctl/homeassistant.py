@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from src.hp_ctl.protocol import FieldSpec, Message
+from hp_ctl.protocol import FieldSpec, Message
 
 logger = logging.getLogger(__name__)
 
