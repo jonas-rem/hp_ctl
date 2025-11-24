@@ -1,0 +1,33 @@
+[Unit]
+Description=HP Control - Panasonic Aquarea Heat Pump Controller
+Documentation=https://github.com/jonas-rem/hp-ctl
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hpctl
+Group=hpctl
+WorkingDirectory=/opt/hp-ctl
+ExecStart=/usr/local/bin/hp-ctl
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/hp-ctl
+SupplementaryGroups=dialout
+
+# Allow access to serial device
+DeviceAllow=/dev/ttyUSB0 rw
+
+# Resource limits
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
