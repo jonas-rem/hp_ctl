@@ -25,6 +25,7 @@ class FieldSpec:
 @dataclass
 class Message:
     """Represents a decoded message with field values."""
+    packet_type: int  # 0x10 for standard, 0x21 for extra
     fields: dict
 
 
@@ -34,7 +35,7 @@ class MessageCodec:
     def __init__(self, fields: list[FieldSpec]):
         self.fields = fields
 
-    def decode(self, raw_msg: bytes) -> Message:
+    def decode(self, raw_msg: bytes, packet_type: int) -> Message:
         """Decode a raw UART message into a Message object.
 
         Assumes the message has already been validated by the UART layer
@@ -42,11 +43,12 @@ class MessageCodec:
 
         Args:
             raw_msg: Raw message bytes (pre-validated)
+            packet_type: Packet type identifier (0x10 for standard, 0x21 for extra)
 
         Returns:
             Decoded Message object
         """
-        logger.debug("Decoding message: %d bytes", len(raw_msg))
+        logger.debug("Decoding message: %d bytes, packet_type: 0x%02x", len(raw_msg), packet_type)
         # Parse fields from data
         values = {}
         for field in self.fields:
@@ -96,7 +98,7 @@ class MessageCodec:
         logger.info("\n".join(lines))
 
         logger.debug("Message decoded successfully: %d fields", len(values))
-        return Message(fields=values)
+        return Message(packet_type=packet_type, fields=values)
 
     def encode(self, message: Message) -> bytes:
         """Encode a Message into binary data using field definitions."""
@@ -105,12 +107,12 @@ class MessageCodec:
     def _extract_value(self, data: bytes, field: FieldSpec) -> int:
         """Extract a value from binary data using field specification."""
         if field.byte_length and field.byte_length > 1:
-            # Multi-byte field (big-endian)
+            # Multi-byte field - little-endian by default
             raw_value = 0
             for i in range(field.byte_length):
-                raw_value = (raw_value << 8) | data[field.byte_offset + i]
+                raw_value |= data[field.byte_offset + i] << (i * 8)
             logger.debug(
-                "Extracted multi-byte field at offset %d (length %d): 0x%x",
+                "Extracted multi-byte field at offset %d (length %d, little-endian): 0x%x",
                 field.byte_offset,
                 field.byte_length,
                 raw_value,
@@ -175,6 +177,14 @@ def hp_power_converter(value: int) -> int:
 def fan_speed_converter(value: int) -> int:
     """Convert fan motor speed: (value - 1) * 10"""
     return (value - 1) * 10
+
+def uint16_le_watts(value: int) -> int:
+    """Extract 16-bit little-endian watt value (for extra packet values)
+
+    The value is already extracted as a 16-bit little-endian int by byte_length=2,
+    so we just return it as-is in Watts.
+    """
+    return value
 
 def hp_status_converter(value: int) -> str:
     """Convert heat pump on/off status from byte 4
@@ -252,7 +262,7 @@ def operating_mode_converter(value: int) -> str:
 
     return f"{mode}{zone_info}, DHW {dhw_status}"
 
-MESSAGE_FIELDS = [
+STANDARD_FIELDS = [
     FieldSpec(
         name="quiet_mode",
         byte_offset=7,
@@ -272,42 +282,7 @@ MESSAGE_FIELDS = [
         ha_state_class="measurement",
         ha_icon="mdi:thermometer",
     ),
-    FieldSpec(
-        name="heat_power_consumption",
-        byte_offset=193,
-        converter=power_converter,
-        unit="kW",
-        ha_class="power",
-        ha_state_class="measurement",
-        ha_icon="mdi:lightning-bolt",
-    ),
-    FieldSpec(
-        name="heat_power_generation",
-        byte_offset=194,
-        converter=power_converter,
-        unit="kW",
-        ha_class="power",
-        ha_state_class="measurement",
-        ha_icon="mdi:lightning-bolt",
-    ),
-    FieldSpec(
-        name="dhw_power_consumption",
-        byte_offset=197,
-        converter=power_converter,
-        unit="kW",
-        ha_class="power",
-        ha_state_class="measurement",
-        ha_icon="mdi:lightning-bolt",
-    ),
-    FieldSpec(
-        name="dhw_power_generation",
-        byte_offset=198,
-        converter=power_converter,
-        unit="kW",
-        ha_class="power",
-        ha_state_class="measurement",
-        ha_icon="mdi:lightning-bolt",
-    ),
+
     FieldSpec(
         name="outdoor_temp",
         byte_offset=142,
@@ -435,27 +410,112 @@ MESSAGE_FIELDS = [
     ),
 ]
 
-MESSAGE_CODEC = MessageCodec(MESSAGE_FIELDS)
+# Extra packet (0x21) fields - power measurements in Watts (16-bit little-endian)
+EXTRA_FIELDS = [
+    FieldSpec(
+        name="heat_power_consumption",
+        byte_offset=14,
+        byte_length=2,
+        converter=uint16_le_watts,
+        unit="W",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+        skip_zero=False,
+    ),
+    FieldSpec(
+        name="cool_power_consumption",
+        byte_offset=16,
+        byte_length=2,
+        converter=uint16_le_watts,
+        unit="W",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+        skip_zero=False,
+    ),
+    FieldSpec(
+        name="dhw_power_consumption",
+        byte_offset=18,
+        byte_length=2,
+        converter=uint16_le_watts,
+        unit="W",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+        skip_zero=False,
+    ),
+    FieldSpec(
+        name="heat_power_generation",
+        byte_offset=20,
+        byte_length=2,
+        converter=uint16_le_watts,
+        unit="W",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+        skip_zero=False,
+    ),
+    FieldSpec(
+        name="cool_power_generation",
+        byte_offset=22,
+        byte_length=2,
+        converter=uint16_le_watts,
+        unit="W",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+        skip_zero=False,
+    ),
+    FieldSpec(
+        name="dhw_power_generation",
+        byte_offset=24,
+        byte_length=2,
+        converter=uint16_le_watts,
+        unit="W",
+        ha_class="power",
+        ha_state_class="measurement",
+        ha_icon="mdi:lightning-bolt",
+        skip_zero=False,
+    ),
+]
+
+STANDARD_CODEC = MessageCodec(STANDARD_FIELDS)
+EXTRA_CODEC = MessageCodec(EXTRA_FIELDS)
 
 
+class HeatPumpProtocol:
+    """Router for decoding different heat pump packet types."""
+
+    def __init__(self):
+        self.standard_codec = STANDARD_CODEC
+        self.extra_codec = EXTRA_CODEC
+
+    def decode(self, raw_msg: bytes) -> Message:
+        """Decode a heat pump message based on its packet type.
+
+        Args:
+            raw_msg: Raw message bytes (pre-validated by UART layer)
+
+        Returns:
+            Decoded Message object with appropriate fields
+
+        Raises:
+            ValueError: If packet type is unknown
+        """
+        if len(raw_msg) < 4:
+            raise ValueError(f"Message too short: {len(raw_msg)} bytes")
+
+        packet_type = raw_msg[3]
+
+        if packet_type == 0x10:
+            logger.debug("Decoding standard packet (0x10)")
+            return self.standard_codec.decode(raw_msg, packet_type)
+        elif packet_type == 0x21:
+            logger.debug("Decoding extra packet (0x21)")
+            return self.extra_codec.decode(raw_msg, packet_type)
+        else:
+            raise ValueError(f"Unknown packet type: 0x{packet_type:02x}")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+PROTOCOL = HeatPumpProtocol()
