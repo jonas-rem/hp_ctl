@@ -7,7 +7,7 @@ from typing import Optional
 from hp_ctl.config import load_config
 from hp_ctl.homeassistant import HomeAssistantMapper
 from hp_ctl.mqtt import MqttClient
-from hp_ctl.protocol import MESSAGE_CODEC, MESSAGE_FIELDS
+from hp_ctl.protocol import PROTOCOL, STANDARD_FIELDS, EXTRA_FIELDS
 from hp_ctl.uart import UartReceiver
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,9 @@ class Application:
         """Publish Home Assistant discovery configs (once at startup)."""
         if self.mqtt_client:
             logger.info("Publishing Home Assistant discovery configs")
-            discovery_configs = self.ha_mapper.message_to_ha_discovery(MESSAGE_FIELDS)
+            # Publish configs for both standard and extra fields
+            all_fields = STANDARD_FIELDS + EXTRA_FIELDS
+            discovery_configs = self.ha_mapper.message_to_ha_discovery(all_fields)
             for topic, payload in discovery_configs.items():
                 self.mqtt_client.publish(topic, payload)
             logger.info("Published %d discovery configs", len(discovery_configs))
@@ -58,7 +60,7 @@ class Application:
         """
         try:
             # Decode message
-            message = MESSAGE_CODEC.decode(raw_msg)
+            message = PROTOCOL.decode(raw_msg)
 
             # Publish state updates
             if self.mqtt_client:
@@ -151,6 +153,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
 
 
 
