@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
+
 import pytest
 
 from hp_ctl.homeassistant import HomeAssistantMapper
@@ -64,4 +67,3 @@ def test_default_device_config():
 
     assert mapper.device_id == "aquarea_k"
     assert mapper.device_name == "Aquarea K"
-

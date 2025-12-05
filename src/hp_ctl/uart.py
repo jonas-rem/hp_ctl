@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
+
 import logging
 import threading
 import time
@@ -189,6 +192,3 @@ class UartReceiver:
             except Exception as e:  # pylint: disable=broad-except
                 logger.exception("UART error: %s", e)
             time.sleep(self.poll_interval)
-
-
-

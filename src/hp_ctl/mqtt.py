@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
+
 import json
 import logging
 
@@ -78,5 +81,3 @@ class MqttClient:
         """Callback for when client disconnects from broker."""
         logger.info("Disconnected from MQTT broker")
         self.connected = False
-
-

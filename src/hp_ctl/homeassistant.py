@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
+
 import logging
 from typing import Any
 
@@ -123,7 +126,3 @@ class HomeAssistantMapper:
 
         logger.debug("Created HA discovery config for %s", field.name)
         return config
-
-
-
-
