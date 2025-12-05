@@ -66,7 +66,7 @@ pip install tox
 ```bash
 # Configure your settings
 cp config.yaml.example config.yaml
-nano config.yaml
+vim config.yaml
 
 # Run installation script
 sudo ./install.sh

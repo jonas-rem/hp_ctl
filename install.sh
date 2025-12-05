@@ -86,7 +86,7 @@ echo "Installation completed successfully!"
 echo
 echo "Next steps:"
 echo "1. Add hpctl user to dialout group: sudo usermod -a -G dialout hpctl"
-echo "2. Edit configuration: sudo nano $INSTALL_DIR/$CONFIG_FILE"
+echo "2. Edit configuration: sudo vim $INSTALL_DIR/$CONFIG_FILE"
 echo "3. Start the service: sudo systemctl start $SERVICE_NAME"
 echo "4. Check status: sudo systemctl status $SERVICE_NAME"
 echo "5. View logs: sudo journalctl -u $SERVICE_NAME -f"
