@@ -404,6 +404,69 @@ STANDARD_FIELDS = [
         ha_state_class="measurement",
         ha_icon="mdi:fan",
     ),
+    FieldSpec(
+        name="discharge_temp",
+        byte_offset=155,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="indoor_piping_temp",
+        byte_offset=157,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="outdoor_piping_temp",
+        byte_offset=158,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="defrost_temp",
+        byte_offset=159,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="eva_outlet_temp",
+        byte_offset=160,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="bypass_outlet_temp",
+        byte_offset=161,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
+    FieldSpec(
+        name="ipm_temp",
+        byte_offset=162,
+        converter=temp_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+    ),
 ]
 
 # Extra packet (0x21) fields - power measurements in Watts (16-bit little-endian)
@@ -509,5 +572,3 @@ class HeatPumpProtocol:
 
 
 PROTOCOL = HeatPumpProtocol()
-
-

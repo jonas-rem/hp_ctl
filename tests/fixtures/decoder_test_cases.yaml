@@ -40,6 +40,12 @@ test_cases:
       defrost_status: "Valve:DHW, Defrost:Inactive"
       hp_power: 5
       fan1_motor_speed: 880
+      discharge_temp: 77
+      indoor_piping_temp: 44
+      outdoor_piping_temp: -7
+      defrost_temp: 0
+      eva_outlet_temp: -9
+      bypass_outlet_temp: 0
 
   panasonic_extra_answer:
     raw_hex: |
