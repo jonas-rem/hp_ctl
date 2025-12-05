@@ -46,6 +46,9 @@ test_cases:
       defrost_temp: 0
       eva_outlet_temp: -9
       bypass_outlet_temp: 0
+      high_pressure: 28.243152000000002
+      low_pressure: 0.0
+      water_pressure: -0.02
 
   panasonic_extra_answer:
     raw_hex: |
@@ -123,3 +126,6 @@ test_cases:
       checksum: ""
     should_raise: ValueError
     error_message: "Invalid checksum"
+
+
+

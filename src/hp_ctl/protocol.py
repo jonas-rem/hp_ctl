@@ -182,6 +182,23 @@ def fan_speed_converter(value: int) -> int:
     """Convert fan motor speed: (value - 1) * 10"""
     return (value - 1) * 10
 
+def pressure_converter(value: int) -> float:
+    """Convert pressure from raw value to bar.
+
+    Formula: ((value - 1) / 5) * 0.980665
+    - First converts to kgf/cm²: (value - 1) / 5
+    - Then converts kgf/cm² to bar: * 0.980665
+    """
+    kgf_cm2 = (value - 1) / 5
+    return kgf_cm2 * 0.980665
+
+def water_pressure_converter(value: int) -> float:
+    """Convert water pressure from raw value to bar.
+
+    Formula: (value - 1) / 50
+    """
+    return (value - 1) / 50
+
 def hp_status_converter(value: int) -> str:
     """Convert heat pump on/off status from byte 4
 
@@ -467,6 +484,35 @@ STANDARD_FIELDS = [
         ha_state_class="measurement",
         ha_icon="mdi:thermometer",
     ),
+    FieldSpec(
+        name="high_pressure",
+        byte_offset=163,
+        converter=pressure_converter,
+        unit="bar",
+        ha_class="pressure",
+        ha_state_class="measurement",
+        ha_icon="mdi:gauge",
+    ),
+    FieldSpec(
+        name="low_pressure",
+        byte_offset=164,
+        converter=pressure_converter,
+        unit="bar",
+        ha_class="pressure",
+        ha_state_class="measurement",
+        ha_icon="mdi:gauge",
+        skip_zero=False,
+    ),
+    FieldSpec(
+        name="water_pressure",
+        byte_offset=125,
+        converter=water_pressure_converter,
+        unit="bar",
+        ha_class="pressure",
+        ha_state_class="measurement",
+        ha_icon="mdi:water-pump",
+        skip_zero=False,
+    ),
 ]
 
 # Extra packet (0x21) fields - power measurements in Watts (16-bit little-endian)
@@ -572,3 +618,9 @@ class HeatPumpProtocol:
 
 
 PROTOCOL = HeatPumpProtocol()
+
+
+
+
+
+
