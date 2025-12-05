@@ -61,7 +61,9 @@ pip install tox
 
 ### Production Installation
 
-#### System Service Installation
+#### User Service Installation (Recommended)
+
+The installation script sets up hp-ctl as a user service and installs udev rules for USB device access.
 
 ```bash
 # Configure your settings
@@ -69,22 +71,43 @@ cp config.yaml.example config.yaml
 vim config.yaml
 
 # Run installation script
-sudo ./install.sh
+./install.sh
 
-# Add service user to dialout group for UART access
-sudo usermod -a -G dialout hpctl
+# Replug your USB serial device
 
 # Start the service
-sudo systemctl start hp-ctl
+systemctl --user start hp-ctl
 
 # Check status
-sudo systemctl status hp-ctl
+systemctl --user status hp-ctl
 
 # View logs
-sudo journalctl -u hp-ctl -f
+journalctl --user -u hp-ctl -f
 ```
 
-The service will automatically start on boot.
+**What gets installed:**
+- User service in `~/.config/systemd/user/` (no sudo needed for management)
+- Configuration in `~/.config/hp-ctl/config.yaml`
+- udev rules creating `/dev/ttyUSB_custom` with MODE=0666 (world-readable/writable)
+- Auto-start on boot via `loginctl enable-linger`
+
+The service will automatically start on boot and run as your user. You can manage it without sudo:
+
+```bash
+# Start/stop/restart
+systemctl --user start hp-ctl
+systemctl --user stop hp-ctl
+systemctl --user restart hp-ctl
+
+# Enable/disable auto-start
+systemctl --user enable hp-ctl
+systemctl --user disable hp-ctl
+
+# View logs
+journalctl --user -u hp-ctl -f
+```
+
+Configuration file location: `~/.config/hp-ctl/config.yaml`
 
 #### Manual Installation
 
@@ -98,8 +121,8 @@ pip install -e git+https://github.com/jonas-rem/hp-ctl.git#egg=hp-ctl
 ### Starting the Application
 
 ```bash
-# If installed as system service
-sudo systemctl start hp-ctl
+# If installed as user service
+systemctl --user start hp-ctl
 
 # If installed manually
 python -m hp_ctl
@@ -164,3 +187,7 @@ analysis. It is **not affiliated with, endorsed by, or supported by Panasonic
 Corporation**. Use at your own risk. Modifying or interfacing with your heat
 pump may void your warranty. The authors assume no liability for any damage to
 equipment or property.
+
+
+
+
