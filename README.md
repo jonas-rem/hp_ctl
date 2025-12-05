@@ -156,3 +156,11 @@ ruff check hp_ctl tests
 # Type checking
 mypy hp_ctl
 ```
+
+## Disclaimer
+
+This is an independent open source project based on reverse-engineered protocol
+analysis. It is **not affiliated with, endorsed by, or supported by Panasonic
+Corporation**. Use at your own risk. Modifying or interfacing with your heat
+pump may void your warranty. The authors assume no liability for any damage to
+equipment or property.
