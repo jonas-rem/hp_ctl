@@ -112,9 +112,3 @@ def test_temp_converter():
     from hp_ctl.protocol import temp_converter
     assert temp_converter(176) == 48
     assert temp_converter(128) == 0
-
-
-def test_power_converter():
-    from hp_ctl.protocol import power_converter
-    assert power_converter(1) == 0.0
-    assert power_converter(10) == 1.8

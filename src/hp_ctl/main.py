@@ -14,6 +14,8 @@ from hp_ctl.protocol import EXTRA_FIELDS, PROTOCOL, STANDARD_FIELDS
 from hp_ctl.uart import UartReceiver
 
 logger = logging.getLogger(__name__)
+LOGLEVEL = logging.DEBUG
+
 
 # Retry configuration
 RETRY_INTERVAL = 3  # seconds
@@ -149,7 +151,7 @@ class Application:
 def main() -> None:
     """Entry point for the application."""
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=LOGLEVEL,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("hp_ctl.log"),

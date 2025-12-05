@@ -154,9 +154,6 @@ def quiet_mode_converter(value: int) -> str:
     }
     return quiet_modes.get(value, f"Unknown({value})")
 
-def power_converter(value: int) -> float:
-    return (value - 1) / 5
-
 def frequency_converter(value: int) -> int:
     """Convert compressor frequency: value - 1"""
     return value - 1
@@ -184,14 +181,6 @@ def hp_power_converter(value: int) -> int:
 def fan_speed_converter(value: int) -> int:
     """Convert fan motor speed: (value - 1) * 10"""
     return (value - 1) * 10
-
-def uint16_le_watts(value: int) -> int:
-    """Extract 16-bit little-endian watt value (for extra packet values)
-
-    The value is already extracted as a 16-bit little-endian int by byte_length=2,
-    so we just return it as-is in Watts.
-    """
-    return value
 
 def hp_status_converter(value: int) -> str:
     """Convert heat pump on/off status from byte 4
@@ -423,7 +412,6 @@ EXTRA_FIELDS = [
         name="heat_power_consumption",
         byte_offset=14,
         byte_length=2,
-        converter=uint16_le_watts,
         unit="W",
         ha_class="power",
         ha_state_class="measurement",
@@ -434,7 +422,6 @@ EXTRA_FIELDS = [
         name="cool_power_consumption",
         byte_offset=16,
         byte_length=2,
-        converter=uint16_le_watts,
         unit="W",
         ha_class="power",
         ha_state_class="measurement",
@@ -445,7 +432,6 @@ EXTRA_FIELDS = [
         name="dhw_power_consumption",
         byte_offset=18,
         byte_length=2,
-        converter=uint16_le_watts,
         unit="W",
         ha_class="power",
         ha_state_class="measurement",
@@ -456,7 +442,6 @@ EXTRA_FIELDS = [
         name="heat_power_generation",
         byte_offset=20,
         byte_length=2,
-        converter=uint16_le_watts,
         unit="W",
         ha_class="power",
         ha_state_class="measurement",
@@ -467,7 +452,6 @@ EXTRA_FIELDS = [
         name="cool_power_generation",
         byte_offset=22,
         byte_length=2,
-        converter=uint16_le_watts,
         unit="W",
         ha_class="power",
         ha_state_class="measurement",
@@ -478,7 +462,6 @@ EXTRA_FIELDS = [
         name="dhw_power_generation",
         byte_offset=24,
         byte_length=2,
-        converter=uint16_le_watts,
         unit="W",
         ha_class="power",
         ha_state_class="measurement",
@@ -526,3 +509,5 @@ class HeatPumpProtocol:
 
 
 PROTOCOL = HeatPumpProtocol()
+
+

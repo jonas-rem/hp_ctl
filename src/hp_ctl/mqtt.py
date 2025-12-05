@@ -53,7 +53,6 @@ class MqttClient:
                    Otherwise, it's prefixed with topic_prefix.
             payload: Dictionary to publish as JSON, or string to publish as-is.
         """
-        # Don't add prefix for Home Assistant discovery topics
         if topic.startswith("homeassistant/"):
             full_topic = topic
         else:
