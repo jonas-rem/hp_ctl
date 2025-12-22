@@ -48,8 +48,12 @@ class Application:
         sys.exit(0)
 
     def _publish_discovery(self) -> None:
-        """Publish Home Assistant discovery configs (once at startup)."""
-        if self.mqtt_client and not self.discovery_published:
+        """Publish Home Assistant discovery configs.
+
+        Called on every MQTT connection (initial and reconnects) to ensure
+        Home Assistant always has the latest device configurations.
+        """
+        if self.mqtt_client:
             logger.info("Publishing Home Assistant discovery configs")
             # Publish configs for both standard and extra fields
             all_fields = STANDARD_FIELDS + EXTRA_FIELDS
@@ -66,10 +70,6 @@ class Application:
             raw_msg: Raw validated message bytes from UART.
         """
         try:
-            # Publish discovery on first message
-            if not self.discovery_published:
-                self._publish_discovery()
-
             # Decode message
             message = PROTOCOL.decode(raw_msg)
 
@@ -89,17 +89,17 @@ class Application:
 
         while MAX_RETRIES is None or retry_count < MAX_RETRIES:
             try:
-                # Initialize MQTT
+                # Initialize MQTT with on_connect callback for discovery publishing
+                # The callback fires on every connection (initial + reconnects),
+                # ensuring Home Assistant always has the latest discovery configs
                 mqtt_config = self.config["mqtt"]
                 self.mqtt_client = MqttClient(
                     broker=mqtt_config["broker"],
                     port=mqtt_config["port"],
+                    on_connect=self._publish_discovery,
                 )
                 self.mqtt_client.connect()
                 logger.info("MQTT client connected")
-
-                # Publish Home Assistant discovery configs once at startup
-                self._publish_discovery()
 
                 # Initialize UART with callback
                 uart_config = self.config["uart"]
@@ -155,8 +155,8 @@ def main() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("hp_ctl.log"),
-            logging.StreamHandler(sys.stdout)
-        ]
+            logging.StreamHandler(sys.stdout),
+        ],
     )
     app = Application(config_path="config.yaml")
     app.run()

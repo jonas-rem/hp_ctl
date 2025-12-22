@@ -33,9 +33,7 @@ def test_config(tmp_path):
 @pytest.fixture
 def panasonic_test_message():
     """Load panasonic_answer test case from fixtures."""
-    fixture_path = (
-        Path(__file__).parent / "fixtures" / "decoder_test_cases.yaml"
-    )
+    fixture_path = Path(__file__).parent / "fixtures" / "decoder_test_cases.yaml"
     with open(fixture_path, "r") as f:
         data = yaml.safe_load(f)
 
@@ -76,17 +74,14 @@ class TestApplicationIntegration:
         # Simulate UART message
         app._on_uart_message(panasonic_test_message)
 
-        # Verify discovery was published
-        assert app.discovery_published
+        # Verify state updates were published (discovery is now via on_connect callback)
         assert mock_mqtt.publish.call_count > 0
 
-        # Check that discovery configs were published
-        discovery_calls = [
-            call for call in mock_mqtt.publish.call_args_list
-            if "homeassistant/sensor" in str(call)
+        # Check that state updates were published
+        state_calls = [
+            call for call in mock_mqtt.publish.call_args_list if "aquarea_k/state/" in str(call)
         ]
-        all_fields = STANDARD_FIELDS + EXTRA_FIELDS
-        assert len(discovery_calls) == len(all_fields)
+        assert len(state_calls) > 0
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
@@ -132,8 +127,7 @@ class TestApplicationIntegration:
 
         # Extract state update calls (those with aquarea_k/state/ in topic)
         state_calls = [
-            call for call in mock_mqtt.publish.call_args_list
-            if "aquarea_k/state/" in str(call)
+            call for call in mock_mqtt.publish.call_args_list if "aquarea_k/state/" in str(call)
         ]
 
         # Verify specific values from panasonic_answer test case
@@ -166,10 +160,8 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_discovery_published_only_once(
-        self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
-    ):
-        """Test that discovery configs are published only once."""
+    def test_discovery_published_on_connect(self, mock_uart_class, mock_mqtt_class, test_config):
+        """Test that discovery configs are published on MQTT connect."""
         mock_mqtt = MagicMock()
         mock_mqtt_class.return_value = mock_mqtt
         mock_uart_class.return_value = MagicMock()
@@ -177,16 +169,41 @@ class TestApplicationIntegration:
         app = Application(config_path=test_config)
         app.mqtt_client = mock_mqtt
 
-        # Send multiple messages
-        for _ in range(3):
-            app._on_uart_message(panasonic_test_message)
+        # Simulate MQTT on_connect callback (as would happen in real connection)
+        app._publish_discovery()
 
         # Count discovery publishes (homeassistant/sensor/...)
         discovery_calls = [
-            call for call in mock_mqtt.publish.call_args_list
-            if "homeassistant/sensor" in str(call)
+            call for call in mock_mqtt.publish.call_args_list if "homeassistant/sensor" in str(call)
         ]
 
-        # Should only have discovery calls from first message
+        # Should have discovery calls for all fields
         all_fields = STANDARD_FIELDS + EXTRA_FIELDS
         assert len(discovery_calls) == len(all_fields)
+        assert app.discovery_published
+
+    @patch("hp_ctl.main.MqttClient")
+    @patch("hp_ctl.main.UartReceiver")
+    def test_discovery_republished_on_reconnect(
+        self, mock_uart_class, mock_mqtt_class, test_config
+    ):
+        """Test that discovery configs are re-published on MQTT reconnect."""
+        mock_mqtt = MagicMock()
+        mock_mqtt_class.return_value = mock_mqtt
+        mock_uart_class.return_value = MagicMock()
+
+        app = Application(config_path=test_config)
+        app.mqtt_client = mock_mqtt
+
+        # Simulate first connection
+        app._publish_discovery()
+        first_call_count = mock_mqtt.publish.call_count
+
+        # Simulate reconnection (callback should publish again)
+        app._publish_discovery()
+        second_call_count = mock_mqtt.publish.call_count
+
+        # Discovery should be published again on reconnection
+        all_fields = STANDARD_FIELDS + EXTRA_FIELDS
+        assert second_call_count == first_call_count * 2
+        assert second_call_count == len(all_fields) * 2
