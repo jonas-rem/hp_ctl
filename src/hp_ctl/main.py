@@ -153,10 +153,7 @@ def main() -> None:
     logging.basicConfig(
         level=LOGLEVEL,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler("hp_ctl.log"),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
     app = Application(config_path="config.yaml")
     app.run()
