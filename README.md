@@ -55,8 +55,7 @@ git clone <repository-url>
 cd hp-ctl
 python3 -m venv venv
 source venv/bin/activate
-pip install -e ".[dev]"
-pip install tox
+make install
 ```
 
 ### Production Installation
@@ -137,48 +136,19 @@ The application will:
 
 ### Running Tests
 
-#### With Tox
-
 ```bash
-# Run all checks (tests, lint, type checking)
-tox
+make test                # Run all tests
+make check               # Lint + type checking
+make coverage            # Test with coverage report
+make fix                 # Auto-fix lint issues
 
-# Run only tests
-tox -e py
-
-# Run with coverage
-tox -e coverage
-```
-
-#### Directly with Pytest
-
-```bash
-# All tests
-pytest
-
-# Integration tests only
-pytest tests/test_integration.py -v
-
-# With coverage report
-pytest --cov=hp_ctl --cov-report=html
-
-# Type checking
-mypy src/hp_ctl
+# Run a single test
+pytest tests/test_protocol.py::test_temp_converter
 ```
 
 ## Logging
 
 Adjust the log level in pyproject.toml.
-
-## Code Quality
-
-```bash
-# Linting
-ruff check hp_ctl tests
-
-# Type checking
-mypy hp_ctl
-```
 
 ## Disclaimer
 
@@ -187,7 +157,3 @@ analysis. It is **not affiliated with, endorsed by, or supported by Panasonic
 Corporation**. Use at your own risk. Modifying or interfacing with your heat
 pump may void your warranty. The authors assume no liability for any damage to
 equipment or property.
-
-
-
-
