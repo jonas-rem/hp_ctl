@@ -2,6 +2,9 @@
 Description=HP Control - Panasonic Aquarea Heat Pump Controller
 Documentation=https://github.com/jonas-rem/hp-ctl
 After=network-online.target
+# Uncomment the following lines when Home Assistant runs as a user service:
+# After=network-online.target home-assistant.service
+# Wants=home-assistant.service
 
 [Service]
 Type=simple

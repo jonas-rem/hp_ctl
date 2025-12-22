@@ -90,6 +90,19 @@ journalctl --user -u hp-ctl -f
 - udev rules creating `/dev/ttyUSB_custom` with MODE=0666 (world-readable/writable)
 - Auto-start on boot via `loginctl enable-linger`
 
+**Home Assistant Integration:**
+
+The service automatically retries MQTT broker connection every 3 seconds until successful:
+
+- **At boot:** If Home Assistant isn't ready, hp-ctl keeps retrying until connection succeeds
+- **After HA restart:** Automatically reconnects and re-publishes device discovery configs
+- **Zero manual intervention:** All reconnection logic is automatic
+
+When you set up Home Assistant as a systemd user service, you can optimize startup ordering:
+1. Edit `~/.config/systemd/user/hp-ctl.service`
+2. Uncomment the lines referencing `home-assistant.service`
+3. Run `systemctl --user daemon-reload`
+
 The service will automatically start on boot and run as your user. You can manage it without sudo:
 
 ```bash
@@ -148,7 +161,20 @@ pytest tests/test_protocol.py::test_temp_converter
 
 ## Logging
 
-Adjust the log level in pyproject.toml.
+All logs are sent to systemd journal when running as a service:
+
+```bash
+# Follow live logs
+journalctl --user -u hp-ctl -f
+
+# Last 100 lines
+journalctl --user -u hp-ctl -n 100
+
+# Logs since boot
+journalctl --user -u hp-ctl -b
+```
+
+The log level can be adjusted in `src/hp_ctl/main.py` (`LOGLEVEL` constant).
 
 ## Disclaimer
 
