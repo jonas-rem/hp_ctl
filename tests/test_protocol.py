@@ -13,6 +13,7 @@ from hp_ctl.protocol import PROTOCOL, Message
 @dataclass
 class MessageTestCase:
     """Test case combining raw message, expected decoded result, and description"""
+
     name: str
     raw_hex: str
     expected: Message
@@ -26,9 +27,7 @@ def _load_test_cases() -> dict:
     Only loads valid message test cases. Invalid message tests (len, checksum)
     are handled by the UART layer and tested in test_uart.py.
     """
-    fixture_path = (
-        Path(__file__).parent / "fixtures" / "decoder_test_cases.yaml"
-    )
+    fixture_path = Path(__file__).parent / "fixtures" / "decoder_test_cases.yaml"
 
     with open(fixture_path, "r") as f:
         data = yaml.safe_load(f)
@@ -84,14 +83,14 @@ def _validate_message(decoded: Message, expected: Message, expected_fields: set[
     Note: len and checksum are validated by the UART layer, not the protocol layer.
     """
     # Check packet_type if specified
-    if 'packet_type' in expected_fields:
+    if "packet_type" in expected_fields:
         assert decoded.packet_type == expected.packet_type, (
             f"packet_type mismatch: 0x{decoded.packet_type:02x} != 0x{expected.packet_type:02x}"
         )
 
     # Check decoded fields dict
     for field_name in expected_fields:
-        if field_name not in ('len', 'checksum', 'packet_type'):
+        if field_name not in ("len", "checksum", "packet_type"):
             expected_value = expected.fields.get(field_name)
             decoded_value = decoded.fields.get(field_name)
             assert decoded_value == expected_value, (
@@ -100,7 +99,7 @@ def _validate_message(decoded: Message, expected: Message, expected_fields: set[
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES.values(), ids=lambda tc: tc.name)
-def test_decoder_parses_valid_message(protocol, test_case):
+def test_decode_valid_msg(protocol, test_case):
     """Test that decoder can parse a valid UART message."""
     raw_bytes = bytes.fromhex(test_case.raw_hex)
     message = protocol.decode(raw_bytes)
@@ -110,5 +109,6 @@ def test_decoder_parses_valid_message(protocol, test_case):
 
 def test_temp_converter():
     from hp_ctl.protocol import temp_converter
+
     assert temp_converter(176) == 48
     assert temp_converter(128) == 0

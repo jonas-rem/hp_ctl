@@ -79,7 +79,7 @@ def test_mqtt_client_on_connect_callback_invoked(mqtt_broker):
     assert len(callback_invoked) == 1
 
 
-def test_mqtt_client_on_connect_callback_not_invoked_on_failure(mqtt_broker):
+def test_on_connect_callback_not_invoked_on_fail(mqtt_broker):
     """Test that on_connect callback is not invoked on failed connection."""
     callback_invoked = []
 

@@ -42,12 +42,12 @@ def panasonic_test_message():
     return bytes.fromhex(raw_hex)
 
 
-class TestApplicationIntegration:
+class TestApp:
     """Integration tests for the complete application pipeline."""
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_application_initialization(self, mock_uart, mock_mqtt, test_config):
+    def test_app_init(self, mock_uart, mock_mqtt, test_config):
         """Test that application initializes correctly."""
         app = Application(config_path=test_config)
 
@@ -58,7 +58,7 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_uart_message_callback_decodes_and_publishes(
+    def test_uart_decode_publish(
         self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
     ):
         """Test that UART message triggers decode and MQTT publish."""
@@ -85,7 +85,7 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_state_updates_published_after_discovery(
+    def test_state_after_discovery(
         self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
     ):
         """Test that state updates are published after discovery."""
@@ -112,7 +112,7 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_state_updates_contain_correct_values(
+    def test_state_correct_values(
         self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
     ):
         """Test that state updates contain correct decoded values."""
@@ -138,9 +138,7 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_invalid_message_does_not_crash_application(
-        self, mock_uart_class, mock_mqtt_class, test_config
-    ):
+    def test_invalid_msg_no_crash(self, mock_uart_class, mock_mqtt_class, test_config):
         """Test that invalid messages are handled gracefully."""
         mock_mqtt = MagicMock()
         mock_mqtt_class.return_value = mock_mqtt
@@ -160,7 +158,7 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_discovery_published_on_connect(self, mock_uart_class, mock_mqtt_class, test_config):
+    def test_discovery_on_connect(self, mock_uart_class, mock_mqtt_class, test_config):
         """Test that discovery configs are published on MQTT connect."""
         mock_mqtt = MagicMock()
         mock_mqtt_class.return_value = mock_mqtt
@@ -184,9 +182,7 @@ class TestApplicationIntegration:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartReceiver")
-    def test_discovery_republished_on_reconnect(
-        self, mock_uart_class, mock_mqtt_class, test_config
-    ):
+    def test_discovery_reconnect(self, mock_uart_class, mock_mqtt_class, test_config):
         """Test that discovery configs are re-published on MQTT reconnect."""
         mock_mqtt = MagicMock()
         mock_mqtt_class.return_value = mock_mqtt

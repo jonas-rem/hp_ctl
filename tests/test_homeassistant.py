@@ -28,7 +28,7 @@ def test_discovery_config_structure(mapper):
         assert "device" in config
 
 
-def test_discovery_config_uses_field_metadata(mapper):
+def test_discovery_uses_field_metadata(mapper):
     """Test that discovery config uses FieldSpec metadata."""
     all_fields = STANDARD_FIELDS + EXTRA_FIELDS
     configs = mapper.message_to_ha_discovery(all_fields)
@@ -51,7 +51,7 @@ def test_state_updates_from_message(mapper):
             "quiet_mode": "Off",
             "zone1_actual_temp": 48,
             "heat_power_consumption": 0.0,
-        }
+        },
     )
 
     updates = mapper.message_to_state_updates(message)
