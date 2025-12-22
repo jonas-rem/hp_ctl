@@ -63,3 +63,31 @@ def test_mqtt_client_on_connect_failure(mqtt_broker):
     client._on_connect(mqtt_broker, None, None, 1, None)
 
     assert client.connected is False
+
+
+def test_mqtt_client_on_connect_callback_invoked(mqtt_broker):
+    """Test that on_connect callback is invoked on successful connection."""
+    callback_invoked = []
+
+    def on_connect_callback():
+        callback_invoked.append(True)
+
+    client = MqttClient(broker="localhost", on_connect=on_connect_callback)
+    client._on_connect(mqtt_broker, None, None, 0, None)
+
+    assert client.connected is True
+    assert len(callback_invoked) == 1
+
+
+def test_mqtt_client_on_connect_callback_not_invoked_on_failure(mqtt_broker):
+    """Test that on_connect callback is not invoked on failed connection."""
+    callback_invoked = []
+
+    def on_connect_callback():
+        callback_invoked.append(True)
+
+    client = MqttClient(broker="localhost", on_connect=on_connect_callback)
+    client._on_connect(mqtt_broker, None, None, 1, None)
+
+    assert client.connected is False
+    assert len(callback_invoked) == 0

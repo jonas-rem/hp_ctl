@@ -3,6 +3,7 @@
 
 import json
 import logging
+from typing import Callable, Optional
 
 import paho.mqtt.client as mqtt
 
@@ -17,6 +18,7 @@ class MqttClient:
         broker: str,
         port: int = 1883,
         topic_prefix: str = "hp_ctl",
+        on_connect: Optional[Callable[[], None]] = None,
     ) -> None:
         """Initialize MQTT client.
 
@@ -24,10 +26,13 @@ class MqttClient:
             broker: MQTT broker hostname or IP.
             port: MQTT broker port. Defaults to 1883.
             topic_prefix: Topic prefix for published messages. Defaults to 'hp_ctl'.
+            on_connect: Optional callback invoked on each successful connection.
+                        Useful for re-publishing discovery configs after reconnection.
         """
         self.broker = broker
         self.port = port
         self.topic_prefix = topic_prefix
+        self.on_connect_callback = on_connect
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
@@ -72,6 +77,10 @@ class MqttClient:
         if reason_code == 0:
             logger.info("Connected to MQTT broker: %s:%d", self.broker, self.port)
             self.connected = True
+            # Invoke callback on every successful connection (initial + reconnect)
+            if self.on_connect_callback:
+                logger.debug("Invoking on_connect callback")
+                self.on_connect_callback()
         else:
             logger.warning("Failed to connect to MQTT broker: %s", reason_code)
             self.connected = False
