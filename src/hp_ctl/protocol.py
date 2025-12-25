@@ -11,23 +11,29 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FieldSpec:
     """Specification for a message field."""
+
     name: str
     byte_offset: int
     bit_offset: Optional[int] = None
     bit_length: Optional[int] = None
     byte_length: Optional[int] = None
     converter: Optional[Callable[[int], Any]] = None
+    inverse_converter: Optional[Callable[[Any], int]] = None
     unit: Optional[str] = None
     default: Any = None
     ha_class: Optional[str] = None
     ha_state_class: Optional[str] = None
     ha_icon: Optional[str] = None
     skip_zero: bool = True  # Skip 0x00 values (usually means no data)
+    writable: bool = False
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
 
 
 @dataclass
 class Message:
     """Represents a decoded message with field values."""
+
     packet_type: int  # 0x10 for standard, 0x21 for extra
     fields: dict
 
@@ -55,6 +61,17 @@ class MessageCodec:
         # Parse fields from data
         values = {}
         for field in self.fields:
+            # Check if field fits in buffer
+            max_offset = field.byte_offset + (field.byte_length or 1)
+            if max_offset > len(raw_msg):
+                logger.debug(
+                    "Field %s: offset %d exceeds message length %d (skipping)",
+                    field.name,
+                    field.byte_offset,
+                    len(raw_msg),
+                )
+                continue
+
             raw_value = self._extract_value(raw_msg, field)
 
             # Skip fields with 0x00 (no data available) if skip_zero is True
@@ -63,9 +80,7 @@ class MessageCodec:
                 continue
 
             try:
-                converted_value = (
-                    field.converter(raw_value) if field.converter else raw_value
-                )
+                converted_value = field.converter(raw_value) if field.converter else raw_value
             except (ValueError, KeyError) as e:
                 # Converter rejected the value (invalid/placeholder data)
                 logger.debug("Field %s: raw=0x%x (skipping - %s)", field.name, raw_value, e)
@@ -95,7 +110,7 @@ class MessageCodec:
         # Log all converted values in a readable format
         lines = [f"{len(values)} fields:"]
         for name, value in values.items():
-            unit = next((f.unit for f in self.fields if f.name == name), '') or ''
+            unit = next((f.unit for f in self.fields if f.name == name), "") or ""
             unit_str = f" {unit}" if unit else ""
             lines.append(f"  {name:<30} {value}{unit_str}")
         logger.info("\n".join(lines))
@@ -103,9 +118,85 @@ class MessageCodec:
         logger.debug("Message decoded successfully: %d fields", len(values))
         return Message(packet_type=packet_type, fields=values)
 
-    def encode(self, message: Message) -> bytes:
-        """Encode a Message into binary data using field definitions."""
-        raise NotImplementedError("encode() not yet implemented")
+    def encode(self, message: Message, base_buffer: Optional[bytes] = None) -> bytes:
+        """Encode a Message into binary data using field definitions.
+
+        Creates a write command buffer by starting with a template of 0x00 bytes
+        (or optional base_buffer) and setting only the fields that have values.
+
+        Args:
+            message: Message object with fields to encode base_buffer: Optional
+            base buffer to modify (defaults to 0x00-filled template)
+
+        Returns:
+            Encoded bytes ready for UART transmission
+
+        Raises:
+            ValueError: If field value is out of valid range or field is not
+            writable
+        """
+        if base_buffer is None:
+            buffer = bytearray(110)
+            # Sync, Length-2 (108), Destination, Packet Type (0x10)
+            buffer[0:4] = bytes([0xF1, 0x6C, 0x01, 0x10])
+        else:
+            buffer = bytearray(base_buffer)
+
+        # Encode each field from the message
+        for field_name, value in message.fields.items():
+            field = self._get_field_by_name(field_name)
+
+            if not field.writable:
+                raise ValueError(f"Field '{field_name}' is not writable")
+
+            # Validate value is within range
+            self._validate_field_value(field, value)
+
+            # Convert user value to raw integer
+            if field.inverse_converter:
+                raw_value = field.inverse_converter(value)
+            else:
+                raw_value = int(value)
+
+            # Pack value into buffer
+            self._pack_value(buffer, field, raw_value)
+
+        return bytes(buffer)
+
+    def _get_field_by_name(self, name: str) -> FieldSpec:
+        """Find field spec by name."""
+        for field in self.fields:
+            if field.name == name:
+                return field
+        raise ValueError(f"Unknown field: {name}")
+
+    def _validate_field_value(self, field: FieldSpec, value: Any) -> None:
+        """Validate that a value is within the field's valid range."""
+        if field.min_value is not None and value < field.min_value:
+            raise ValueError(
+                f"Field '{field.name}' value {value} is below minimum {field.min_value}"
+            )
+
+        if field.max_value is not None and value > field.max_value:
+            raise ValueError(
+                f"Field '{field.name}' value {value} exceeds maximum {field.max_value}"
+            )
+
+    def _pack_value(self, buffer: bytearray, field: FieldSpec, raw_value: int) -> None:
+        """Pack a raw value into the buffer at the field's position."""
+        if field.byte_length and field.byte_length > 1:
+            # Multi-byte field - little-endian
+            for i in range(field.byte_length):
+                buffer[field.byte_offset + i] = (raw_value >> (i * 8)) & 0xFF
+        elif field.bit_offset is not None and field.bit_length is not None:
+            # Bit field - read-modify-write
+            byte_val = buffer[field.byte_offset]
+            mask = ((1 << field.bit_length) - 1) << field.bit_offset
+            byte_val = (byte_val & ~mask) | ((raw_value << field.bit_offset) & mask)
+            buffer[field.byte_offset] = byte_val
+        else:
+            # Single byte field
+            buffer[field.byte_offset] = raw_value & 0xFF
 
     def _extract_value(self, data: bytes, field: FieldSpec) -> int:
         """Extract a value from binary data using field specification."""
@@ -143,6 +234,7 @@ def temp_converter(value: int) -> float:
     """Convert temperature: value - 128"""
     return value - 128
 
+
 def quiet_mode_converter(value: int) -> str:
     """Convert quiet mode bit pattern to mode name"""
     quiet_modes = {
@@ -154,9 +246,11 @@ def quiet_mode_converter(value: int) -> str:
     }
     return quiet_modes.get(value, f"Unknown({value})")
 
+
 def frequency_converter(value: int) -> int:
     """Convert compressor frequency: value - 1"""
     return value - 1
+
 
 def pump_flow_rate_converter(value: int) -> float:
     """Convert pump flow rate from 16-bit little-endian value.
@@ -170,17 +264,21 @@ def pump_flow_rate_converter(value: int) -> float:
     high_byte = (value >> 8) & 0xFF
     return low_byte + (high_byte - 1) / 256
 
+
 def pump_speed_converter(value: int) -> int:
     """Convert pump speed: (value - 1) * 50"""
     return (value - 1) * 50
+
 
 def hp_power_converter(value: int) -> int:
     """Convert heat pump power: value - 1"""
     return value - 1
 
+
 def fan_speed_converter(value: int) -> int:
     """Convert fan motor speed: (value - 1) * 10"""
     return (value - 1) * 10
+
 
 def pressure_converter(value: int) -> float:
     """Convert pressure from raw value to bar.
@@ -192,12 +290,14 @@ def pressure_converter(value: int) -> float:
     kgf_cm2 = (value - 1) / 5
     return kgf_cm2 * 0.980665
 
+
 def water_pressure_converter(value: int) -> float:
     """Convert water pressure from raw value to bar.
 
     Formula: (value - 1) / 50
     """
     return (value - 1) / 50
+
 
 def hp_status_converter(value: int) -> str:
     """Convert heat pump on/off status from byte 4
@@ -219,6 +319,7 @@ def hp_status_converter(value: int) -> str:
         raise ValueError(f"Invalid hp_status value: 0x{value:02x}")
     return status_map[value]
 
+
 def defrost_converter(value: int) -> str:
     """Convert defrost status and 3-way valve from byte 111
 
@@ -232,6 +333,7 @@ def defrost_converter(value: int) -> str:
     defrost = "Active" if defrost_bits == 0b10 else "Inactive"
 
     return f"Valve:{valve}, Defrost:{defrost}"
+
 
 def operating_mode_converter(value: int) -> str:
     """Convert operating mode from byte 6
@@ -275,6 +377,28 @@ def operating_mode_converter(value: int) -> str:
 
     return f"{mode}{zone_info}, DHW {dhw_status}"
 
+
+def temp_inverse_converter(value: float) -> int:
+    """Convert temperature back to raw: value + 128"""
+    return int(round(value + 128))
+
+
+def quiet_mode_inverse_converter(value: int) -> int:
+    """Convert quiet mode level (0-3) to raw bit pattern: (value + 1)"""
+    return value + 1
+
+
+def hp_status_inverse_converter(value: int) -> int:
+    """Convert HP status (0=Off, 1=On) to raw write value (1=Off, 2=On)"""
+    return value + 1
+
+
+def operating_mode_inverse_converter(value: int) -> int:
+    """Convert operating mode (0-6) to raw byte 6 value"""
+    mapping = {0: 18, 1: 19, 2: 24, 3: 33, 4: 34, 5: 35, 6: 40}
+    return mapping.get(value, 0)
+
+
 STANDARD_FIELDS = [
     FieldSpec(
         name="quiet_mode",
@@ -282,9 +406,13 @@ STANDARD_FIELDS = [
         bit_offset=3,
         bit_length=5,
         converter=quiet_mode_converter,
+        inverse_converter=quiet_mode_inverse_converter,
         unit="",
         ha_class="enum",
         ha_icon="mdi:fan",
+        writable=True,
+        min_value=0,
+        max_value=3,
     ),
     FieldSpec(
         name="zone1_actual_temp",
@@ -295,7 +423,6 @@ STANDARD_FIELDS = [
         ha_state_class="measurement",
         ha_icon="mdi:thermometer",
     ),
-
     FieldSpec(
         name="outdoor_temp",
         byte_offset=142,
@@ -327,10 +454,27 @@ STANDARD_FIELDS = [
         name="dhw_target_temp",
         byte_offset=42,
         converter=temp_converter,
+        inverse_converter=temp_inverse_converter,
         unit="°C",
         ha_class="temperature",
         ha_state_class="measurement",
         ha_icon="mdi:thermometer",
+        writable=True,
+        min_value=40.0,
+        max_value=75.0,
+    ),
+    FieldSpec(
+        name="zone1_heat_target_temp",
+        byte_offset=38,
+        converter=temp_converter,
+        inverse_converter=temp_inverse_converter,
+        unit="°C",
+        ha_class="temperature",
+        ha_state_class="measurement",
+        ha_icon="mdi:thermometer",
+        writable=True,
+        min_value=20.0,
+        max_value=65.0,
     ),
     FieldSpec(
         name="zone1_target_temp",
@@ -364,9 +508,13 @@ STANDARD_FIELDS = [
         name="operating_mode",
         byte_offset=6,
         converter=operating_mode_converter,
+        inverse_converter=operating_mode_inverse_converter,
         unit="",
         ha_class="enum",
         ha_icon="mdi:heating-coil",
+        writable=True,
+        min_value=0,
+        max_value=6,
     ),
     FieldSpec(
         name="dhw_actual_temp",
@@ -390,10 +538,14 @@ STANDARD_FIELDS = [
         name="hp_status",
         byte_offset=4,
         converter=hp_status_converter,
+        inverse_converter=hp_status_inverse_converter,
         unit="",
         ha_class="enum",
         ha_icon="mdi:power",
         skip_zero=False,  # 0x00 might be a valid status value
+        writable=True,
+        min_value=0,
+        max_value=1,
     ),
     FieldSpec(
         name="defrost_status",
@@ -618,9 +770,3 @@ class HeatPumpProtocol:
 
 
 PROTOCOL = HeatPumpProtocol()
-
-
-
-
-
-

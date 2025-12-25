@@ -30,6 +30,7 @@ test_cases:
       outlet_water_temp: 48
       compressor_frequency: 88
       dhw_target_temp: 50
+      zone1_heat_target_temp: 0
       zone1_target_temp: 28
       inlet_water_temp: 43
       pump_flow_rate: 11.10546875
