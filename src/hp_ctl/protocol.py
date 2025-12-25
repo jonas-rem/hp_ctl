@@ -41,8 +41,9 @@ class Message:
 class MessageCodec:
     """Encodes/decodes Message instances using FieldSpec definitions."""
 
-    def __init__(self, fields: list[FieldSpec]):
+    def __init__(self, fields: list[FieldSpec], user_limits: Optional[dict[str, Any]] = None):
         self.fields = fields
+        self.user_limits = user_limits or {}
 
     def decode(self, raw_msg: bytes, packet_type: int) -> Message:
         """Decode a raw UART message into a Message object.
@@ -172,14 +173,22 @@ class MessageCodec:
 
     def _validate_field_value(self, field: FieldSpec, value: Any) -> None:
         """Validate that a value is within the field's valid range."""
-        if field.min_value is not None and value < field.min_value:
-            raise ValueError(
-                f"Field '{field.name}' value {value} is below minimum {field.min_value}"
-            )
+        min_val = field.min_value
+        max_val = field.max_value
 
-        if field.max_value is not None and value > field.max_value:
+        # Override with user limits if present
+        if field.name in self.user_limits:
+            user_field_limits = self.user_limits[field.name]
+            if isinstance(user_field_limits, dict) and "max" in user_field_limits:
+                max_val = user_field_limits["max"]
+
+        if min_val is not None and value < min_val:
+            raise ValueError(f"Field '{field.name}' value {value} is below minimum {min_val}")
+
+        if max_val is not None and value > max_val:
+            limit_type = "user-defined " if field.name in self.user_limits else ""
             raise ValueError(
-                f"Field '{field.name}' value {value} exceeds maximum {field.max_value}"
+                f"Field '{field.name}' value {value} exceeds {limit_type}maximum {max_val}"
             )
 
     def _pack_value(self, buffer: bytearray, field: FieldSpec, raw_value: int) -> None:
@@ -738,9 +747,9 @@ EXTRA_CODEC = MessageCodec(EXTRA_FIELDS)
 class HeatPumpProtocol:
     """Router for decoding different heat pump packet types."""
 
-    def __init__(self):
-        self.standard_codec = STANDARD_CODEC
-        self.extra_codec = EXTRA_CODEC
+    def __init__(self, user_limits: Optional[dict[str, Any]] = None):
+        self.standard_codec = MessageCodec(STANDARD_FIELDS, user_limits=user_limits)
+        self.extra_codec = MessageCodec(EXTRA_FIELDS, user_limits=user_limits)
 
     def decode(self, raw_msg: bytes) -> Message:
         """Decode a heat pump message based on its packet type.

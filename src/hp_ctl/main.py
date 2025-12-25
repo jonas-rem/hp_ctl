@@ -10,7 +10,7 @@ from typing import Optional
 from hp_ctl.config import load_config
 from hp_ctl.homeassistant import HomeAssistantMapper
 from hp_ctl.mqtt import MqttClient
-from hp_ctl.protocol import EXTRA_FIELDS, PROTOCOL, STANDARD_FIELDS
+from hp_ctl.protocol import EXTRA_FIELDS, STANDARD_FIELDS, HeatPumpProtocol
 from hp_ctl.uart import UartReceiver
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ class Application:
             config_path: Path to config.yaml file.
         """
         self.config = load_config(config_path)
+        self.protocol = HeatPumpProtocol(user_limits=self.config.get("limits"))
         self.mqtt_client: Optional[MqttClient] = None
         self.uart_receiver: Optional[UartReceiver] = None
         self.ha_mapper = HomeAssistantMapper()
@@ -71,7 +72,7 @@ class Application:
         """
         try:
             # Decode message
-            message = PROTOCOL.decode(raw_msg)
+            message = self.protocol.decode(raw_msg)
 
             # Publish state updates
             if self.mqtt_client:

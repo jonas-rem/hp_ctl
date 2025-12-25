@@ -45,8 +45,33 @@ uart:
 mqtt:
   broker: localhost
   port: 1883
+
+#### Optional: Field Value Limits
+
+You can restrict maximum values for writable fields to prevent unsafe settings.
+This is useful for limiting domestic hot water or heating temperatures beyond
+the protocol's defaults.
+
+```yaml
+# Optional: Restrict maximum values for writable fields
+limits:
+  dhw_target_temp:
+    max: 60  # °C (protocol allows up to 75°C)
+  zone1_heat_target_temp:
+    max: 50  # °C (protocol allows up to 65°C)
 ```
 
+**Available writable fields:**
+- `dhw_target_temp` - Domestic Hot Water target temperature (40-75°C)
+- `zone1_heat_target_temp` - Zone 1 heating target temperature (20-65°C)
+- `quiet_mode` - Quiet mode level (0-3)
+- `operating_mode` - Operating mode (0-6)
+- `hp_status` - Heat pump on/off status (0-1)
+
+**Notes:**
+- The `limits` section is optional. Omitted fields use protocol defaults.
+- User-defined max values cannot exceed protocol maximums.
+- Invalid configurations will raise an error on startup.
 
 ### Development Setup
 
@@ -62,7 +87,8 @@ make install
 
 #### User Service Installation (Recommended)
 
-The installation script sets up hp-ctl as a user service and installs udev rules for USB device access.
+The installation script sets up hp-ctl as a user service and installs udev
+rules for USB device access.
 
 ```bash
 # Configure your settings
@@ -92,18 +118,23 @@ journalctl --user -u hp-ctl -f
 
 **Home Assistant Integration:**
 
-The service automatically retries MQTT broker connection every 3 seconds until successful:
+The service automatically retries MQTT broker connection every 3 seconds until
+successful:
 
-- **At boot:** If Home Assistant isn't ready, hp-ctl keeps retrying until connection succeeds
-- **After HA restart:** Automatically reconnects and re-publishes device discovery configs
+- **At boot:** If Home Assistant isn't ready, hp-ctl keeps retrying until
+  connection succeeds
+- **After HA restart:** Automatically reconnects and re-publishes device
+  discovery configs
 - **Zero manual intervention:** All reconnection logic is automatic
 
-When you set up Home Assistant as a systemd user service, you can optimize startup ordering:
+When you set up Home Assistant as a systemd user service, you can optimize
+startup ordering:
 1. Edit `~/.config/systemd/user/hp-ctl.service`
 2. Uncomment the lines referencing `home-assistant.service`
 3. Run `systemctl --user daemon-reload`
 
-The service will automatically start on boot and run as your user. You can manage it without sudo:
+The service will automatically start on boot and run as your user. You can
+manage it without sudo:
 
 ```bash
 # Start/stop/restart

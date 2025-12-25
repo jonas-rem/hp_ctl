@@ -5,3 +5,9 @@ uart:
 mqtt:
   broker: localhost
   port: 1883
+
+limits:
+  dhw_target_temp:
+    max: 52
+  zone1_heat_target_temp:
+    max: 37
