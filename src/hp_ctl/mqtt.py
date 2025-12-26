@@ -19,6 +19,7 @@ class MqttClient:
         port: int = 1883,
         topic_prefix: str = "hp_ctl",
         on_connect: Optional[Callable[[], None]] = None,
+        on_message: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         """Initialize MQTT client.
 
@@ -28,14 +29,18 @@ class MqttClient:
             topic_prefix: Topic prefix for published messages. Defaults to 'hp_ctl'.
             on_connect: Optional callback invoked on each successful connection.
                         Useful for re-publishing discovery configs after reconnection.
+            on_message: Optional callback invoked when a message is received.
+                        Args: (topic, payload)
         """
         self.broker = broker
         self.port = port
         self.topic_prefix = topic_prefix
         self.on_connect_callback = on_connect
+        self.on_message_callback = on_message
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
         self.connected = False
 
     def connect(self) -> None:
@@ -71,6 +76,23 @@ class MqttClient:
 
         logger.debug("Publishing to %s: %s", full_topic, mqtt_payload)
         self.client.publish(full_topic, mqtt_payload, qos=1)
+
+    def subscribe(self, topic: str) -> None:
+        """Subscribe to a topic pattern.
+
+        Args:
+            topic: MQTT topic to subscribe to (can include wildcards).
+        """
+        logger.debug("Subscribing to: %s", topic)
+        self.client.subscribe(topic, qos=1)
+
+    def _on_message(self, client, userdata, msg):
+        """Handle incoming MQTT messages."""
+        if self.on_message_callback:
+            topic = msg.topic
+            payload = msg.payload.decode()
+            logger.debug("Received message: %s = %s", topic, payload)
+            self.on_message_callback(topic, payload)
 
     def _on_connect(self, client, userdata, connect_flags, reason_code, properties):
         """Callback for when client connects to broker."""
