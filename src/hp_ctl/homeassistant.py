@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from hp_ctl.protocol import FieldSpec, Message
 
@@ -45,9 +45,7 @@ class HomeAssistantMapper:
         """
         return f"{self.topic_prefix}/{self.device_id}/state"
 
-    def message_to_ha_discovery(
-        self, fields: list[FieldSpec]
-    ) -> dict[str, dict]:
+    def message_to_ha_discovery(self, fields: list[FieldSpec]) -> dict[str, dict]:
         """Convert field specs to Home Assistant MQTT Discovery configs.
 
         Args:
@@ -126,3 +124,108 @@ class HomeAssistantMapper:
 
         logger.debug("Created HA discovery config for %s", field.name)
         return config
+
+    def get_command_topic_prefix(self) -> str:
+        """Get the MQTT topic prefix for commands (relative)."""
+        return f"{self.device_id}/set"
+
+    def get_full_command_topic_prefix(self) -> str:
+        """Get the full MQTT topic prefix including hp_ctl prefix."""
+        return f"{self.topic_prefix}/{self.device_id}/set"
+
+    def writable_fields_to_ha_discovery(
+        self, fields: list[FieldSpec], user_limits: Optional[dict] = None
+    ) -> dict[str, dict]:
+        """Generate discovery configs for writable fields.
+
+        Returns:
+            Dictionary of {topic: payload} for MQTT publishing.
+        """
+        configs = {}
+        for field in fields:
+            if not field.writable:
+                continue
+
+            # Determine entity type
+            if field.options is not None:
+                if len(field.options) == 2 and set(field.options) == {"On", "Off"}:
+                    # Binary → switch
+                    topic = f"homeassistant/switch/{self.device_id}/{field.name}/config"
+                    configs[topic] = self._create_switch_config(field)
+                else:
+                    # Multi-option → select
+                    topic = f"homeassistant/select/{self.device_id}/{field.name}/config"
+                    configs[topic] = self._create_select_config(field)
+            else:
+                # Numeric → number
+                topic = f"homeassistant/number/{self.device_id}/{field.name}/config"
+                configs[topic] = self._create_number_config(field, user_limits)
+
+        return configs
+
+    def _create_number_config(self, field: FieldSpec, user_limits: Optional[dict]) -> dict:
+        """Create discovery config for number entity."""
+        # Use stricter of protocol vs user-defined limits
+        min_val = field.min_value
+        max_val = field.max_value
+
+        if user_limits and field.name in user_limits:
+            limit_config = user_limits[field.name]
+            if isinstance(limit_config, dict) and "max" in limit_config:
+                max_val = min(max_val, limit_config["max"]) if max_val else limit_config["max"]
+
+        return {
+            "name": field.name.replace("_", " ").title(),
+            "unique_id": f"{self.device_id}_{field.name}",
+            "state_topic": f"{self.get_full_state_topic_prefix()}/{field.name}",
+            "command_topic": f"{self.get_full_command_topic_prefix()}/{field.name}",
+            "min": min_val,
+            "max": max_val,
+            "step": 1,
+            "unit_of_measurement": field.unit,
+            "device_class": field.ha_class,
+            "icon": field.ha_icon,
+            "optimistic": True,  # Fast feedback
+            "device": {
+                "identifiers": [self.device_id],
+                "name": self.device_name,
+                "manufacturer": "Panasonic",
+            },
+        }
+
+    def _create_select_config(self, field: FieldSpec) -> dict:
+        """Create discovery config for select entity."""
+        return {
+            "name": field.name.replace("_", " ").title(),
+            "unique_id": f"{self.device_id}_{field.name}",
+            "state_topic": f"{self.get_full_state_topic_prefix()}/{field.name}",
+            "command_topic": f"{self.get_full_command_topic_prefix()}/{field.name}",
+            "options": field.options,
+            "icon": field.ha_icon,
+            "optimistic": True,
+            "device": {
+                "identifiers": [self.device_id],
+                "name": self.device_name,
+                "manufacturer": "Panasonic",
+            },
+        }
+
+    def _create_switch_config(self, field: FieldSpec) -> dict:
+        """Create discovery config for switch entity."""
+        return {
+            "name": field.name.replace("_", " ").title(),
+            "unique_id": f"{self.device_id}_{field.name}",
+            "state_topic": f"{self.get_full_state_topic_prefix()}/{field.name}",
+            "command_topic": f"{self.get_full_command_topic_prefix()}/{field.name}",
+            "payload_on": "On",
+            "payload_off": "Off",
+            "state_on": "On",
+            "state_off": "Off",
+            "icon": field.ha_icon,
+            "optimistic": True,
+            "device": {
+                "identifiers": [self.device_id],
+                "name": self.device_name,
+                "manufacturer": "Panasonic",
+            },
+        }

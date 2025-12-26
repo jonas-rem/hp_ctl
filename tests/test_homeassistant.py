@@ -67,3 +67,30 @@ def test_default_device_config():
 
     assert mapper.device_id == "aquarea_k"
     assert mapper.device_name == "Aquarea K"
+
+
+def test_writable_discovery(mapper):
+    """Test discovery config for writable fields."""
+    configs = mapper.writable_fields_to_ha_discovery(STANDARD_FIELDS)
+
+    # Check number entity (dhw_target_temp)
+    dhw_topic = "homeassistant/number/test_aquarea/dhw_target_temp/config"
+    assert dhw_topic in configs
+    dhw_config = configs[dhw_topic]
+    assert dhw_config["min"] == 40.0
+    assert dhw_config["max"] == 75.0
+    assert "command_topic" in dhw_config
+
+    # Check enum entity (operating_mode)
+    mode_topic = "homeassistant/select/test_aquarea/operating_mode/config"
+    assert mode_topic in configs
+    mode_config = configs[mode_topic]
+    assert "options" in mode_config
+    assert "Heat" in mode_config["options"]
+
+    # Check switch entity (hp_status)
+    status_topic = "homeassistant/switch/test_aquarea/hp_status/config"
+    assert status_topic in configs
+    status_config = configs[status_topic]
+    assert status_config["payload_on"] == "On"
+    assert status_config["payload_off"] == "Off"
