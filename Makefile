@@ -14,7 +14,7 @@ fix:
 	ruff check --fix src/hp_ctl tests
 
 coverage:
-	pytest --cov=src/hp_ctl --cov-report=html --cov-report=term-missing
+	pytest --cov=src/hp_ctl --cov-report=html --cov-report=term-missing --html=htmlcov/test_report.html --self-contained-html
 
 install:
 	pip install -e ".[dev]"
