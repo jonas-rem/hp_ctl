@@ -38,10 +38,6 @@ class Application:
         self.ha_mapper = HomeAssistantMapper()
         self.discovery_published = False
 
-        # Setup signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
         logger.info("Shutdown signal received (%d)", signum)
@@ -154,6 +150,10 @@ class Application:
 
     def run(self) -> None:
         """Start the application and run main loop with retry logic."""
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
         retry_count = 0
 
         while MAX_RETRIES is None or retry_count < MAX_RETRIES:

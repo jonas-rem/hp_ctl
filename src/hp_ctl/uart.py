@@ -68,8 +68,12 @@ class UartTransceiver:
         """Close UART connection and stop listening."""
         logger.debug("Closing UART connection")
         self.listening = False
+        # Close connection first to break any blocking read()
+        try:
+            self.serial_conn.close()
+        except Exception as e:
+            logger.debug("Error closing serial connection: %s", e)
         self.thread.join(timeout=1.0)
-        self.serial_conn.close()
         logger.info("UART connection closed")
 
     def send(self, data: bytes) -> None:
@@ -98,12 +102,14 @@ class UartTransceiver:
         """
 
         # Wait for start delimiter
-        while True:
+        while self.listening:
             byte = self.serial_conn.read(1)
             if not byte:
                 return b""
             if byte[0] == START_DELIMITER:
                 break
+        else:
+            return b""
 
         # Read length byte
         length_byte = self.serial_conn.read(1)

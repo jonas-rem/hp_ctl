@@ -48,10 +48,12 @@ def test_uart_receiver_callback(mocker):
         port="/dev/ttyUSB0",
         baudrate=9600,
         on_message=mock_callback,
-        poll_interval=0.01,
+        poll_interval=0.1,
     )
-    time.sleep(0.05)  # Allow loop to trigger
-    receiver.close()
+    try:
+        time.sleep(0.2)  # Allow loop to trigger
+    finally:
+        receiver.close()
 
     # Assert callback was called with the raw bytes
     assert len(callback_called) > 0
