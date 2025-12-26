@@ -118,18 +118,24 @@ journalctl --user -u hp-ctl -f
 
 **Home Assistant Integration:**
 
-The service automatically creates entities in Home Assistant using **MQTT Discovery**.
+The service automatically creates entities in Home Assistant using **MQTT
+Discovery**.
 
-- **Sensors:** All readable fields (temperatures, pressures, flow rates) appear as sensors.
+- **Sensors:** All readable fields (temperatures, pressures, flow rates) appear
+  as sensors.
 - **Controls:** Writable fields appear as controllable entities:
     - **Climate/Switch:** `hp_status` (On/Off)
-    - **Select:** `operating_mode` (Heat, Cool, DHW, etc.), `quiet_mode` (Level 1-3)
+    - **Select:** `operating_mode` (Heat, Cool, DHW, etc.), `quiet_mode`
+      (Level 1-3)
     - **Number:** `dhw_target_temp`, `zone1_heat_target_temp`
 
-**No manual configuration in Home Assistant is required.** Just ensure the MQTT integration is set up and "Enable Discovery" is checked (this is the default).
-Controls in the Home Assistant UI will automatically send commands back to the heat pump.
+**No manual configuration in Home Assistant is required.** Just ensure the MQTT
+integration is set up and "Enable Discovery" is checked (this is the default).
+Controls in the Home Assistant UI will automatically send commands back to the
+heat pump.
 
-The service automatically retries MQTT broker connection every 3 seconds until successful:
+The service automatically retries MQTT broker connection every 3 seconds until
+successful:
 
 - **At boot:** If Home Assistant isn't ready, hp-ctl keeps retrying until
   connection succeeds
