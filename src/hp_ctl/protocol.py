@@ -8,6 +8,26 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
+QUIET_MODE_OPTIONS = [
+    "Off",
+    "Level 1",
+    "Level 2",
+    "Level 3",
+]
+
+OPERATING_MODE_OPTIONS = [
+    "Heat",
+    "Cool",
+    "Auto",
+    "DHW",
+    "Heat+DHW",
+    "Cool+DHW",
+    "Auto+DHW",
+]
+
+HP_STATUS_OPTIONS = ["Off", "On"]
+
+
 @dataclass
 class FieldSpec:
     """Specification for a message field."""
@@ -28,6 +48,7 @@ class FieldSpec:
     writable: bool = False
     min_value: Optional[float] = None
     max_value: Optional[float] = None
+    options: Optional[list[str]] = None
 
 
 @dataclass
@@ -173,6 +194,13 @@ class MessageCodec:
 
     def _validate_field_value(self, field: FieldSpec, value: Any) -> None:
         """Validate that a value is within the field's valid range."""
+        if field.options is not None:
+            if value not in field.options:
+                raise ValueError(
+                    f"Field '{field.name}' value '{value}' not in options: {field.options}"
+                )
+            return
+
         min_val = field.min_value
         max_val = field.max_value
 
@@ -256,6 +284,20 @@ def quiet_mode_converter(value: int) -> str:
     return quiet_modes.get(value, f"Unknown({value})")
 
 
+def quiet_mode_inverse_converter(value: str) -> int:
+    """Convert quiet mode string to raw bit pattern"""
+    mapping = {
+        "Off": 9,
+        "Level 1": 10,
+        "Level 2": 11,
+        "Level 3": 12,
+        "Scheduled": 17,
+    }
+    if value not in mapping:
+        raise ValueError(f"Invalid quiet_mode: {value}")
+    return mapping[value]
+
+
 def frequency_converter(value: int) -> int:
     """Convert compressor frequency: value - 1"""
     return value - 1
@@ -329,6 +371,14 @@ def hp_status_converter(value: int) -> str:
     return status_map[value]
 
 
+def hp_status_inverse_converter(value: str) -> int:
+    """Convert HP status string to raw write value"""
+    mapping = {"Off": 1, "On": 2}
+    if value not in mapping:
+        raise ValueError(f"Invalid hp_status: {value}")
+    return mapping[value]
+
+
 def defrost_converter(value: int) -> str:
     """Convert defrost status and 3-way valve from byte 111
 
@@ -347,44 +397,30 @@ def defrost_converter(value: int) -> str:
 def operating_mode_converter(value: int) -> str:
     """Convert operating mode from byte 6
 
-    Bit 1: Zone2 (0=off, 1=on)
-    Bit 2: Zone1 (0=off, 1=on)
-    3rd & 4th bit: DHW (b01=off, b10=on)
-    5th-8th bit: Mode (b0001=DHW only, b0010=Heat, b0011=Cool, b0110=Heat+Zone, b1001=Auto(Heat), b1010=Auto(Cool))
+    Returns simple strings matching OPERATING_MODE_OPTIONS for single-zone setups.
     """
-    zone2 = value & 0b1
-    zone1 = (value >> 1) & 0b1
     dhw_bits = (value >> 2) & 0b11
     mode_bits = (value >> 4) & 0b1111
 
-    dhw_status = "on" if dhw_bits == 0b10 else "off"
+    dhw_on = dhw_bits == 0b10
 
-    mode_map = {
-        0b0001: "DHW only",
-        0b0010: "Heat",
-        0b0011: "Cool",
-        0b0101: "Heat",  # Heat with zones
-        0b0110: "Heat",  # Heat with zones
-        0b0111: "Cool",  # Cool with zones
-        0b1001: "Auto(Heat)",
-        0b1010: "Auto(Cool)",
-    }
+    if mode_bits == 0b0001:  # DHW only
+        return "DHW"
 
-    # Reject mode_bits 0 (Off) as it appears in no-data packets
-    # Use compressor_frequency or hp_status to determine if HP is actually off
-    if mode_bits not in mode_map:
+    mode_str = "Unknown"
+    if mode_bits in [0b0010, 0b0101, 0b0110]:  # Heat variants
+        mode_str = "Heat"
+    elif mode_bits in [0b0011, 0b0111]:  # Cool variants
+        mode_str = "Cool"
+    elif mode_bits in [0b1001, 0b1010]:  # Auto variants
+        mode_str = "Auto"
+
+    if mode_str == "Unknown":
         raise ValueError(f"Invalid operating_mode: mode_bits={mode_bits:04b}")
 
-    mode = mode_map[mode_bits]
-
-    zones = []
-    if zone1:
-        zones.append("Z1")
-    if zone2:
-        zones.append("Z2")
-    zone_info = f" [{'+'.join(zones)}]" if zones else ""
-
-    return f"{mode}{zone_info}, DHW {dhw_status}"
+    if dhw_on:
+        return f"{mode_str}+DHW"
+    return mode_str
 
 
 def temp_inverse_converter(value: float) -> int:
@@ -392,20 +428,21 @@ def temp_inverse_converter(value: float) -> int:
     return int(round(value + 128))
 
 
-def quiet_mode_inverse_converter(value: int) -> int:
-    """Convert quiet mode level (0-3) to raw bit pattern: (value + 1)"""
-    return value + 1
+def operating_mode_inverse_converter(value: str) -> int:
+    """Convert operating mode string to raw byte 6 value"""
+    mapping = {
+        "Heat": 0x22,  # Mode 2, DHW 0, Z1 1
+        "Cool": 0x32,  # Mode 3, DHW 0, Z1 1
+        "Auto": 0x92,  # Mode 9, DHW 0, Z1 1
+        "DHW": 0x18,  # Mode 1, DHW 2, Z1 0
+        "Heat+DHW": 0x2A,  # Mode 2, DHW 2, Z1 1
+        "Cool+DHW": 0x3A,  # Mode 3, DHW 2, Z1 1
+        "Auto+DHW": 0x9A,  # Mode 9, DHW 2, Z1 1
+    }
 
-
-def hp_status_inverse_converter(value: int) -> int:
-    """Convert HP status (0=Off, 1=On) to raw write value (1=Off, 2=On)"""
-    return value + 1
-
-
-def operating_mode_inverse_converter(value: int) -> int:
-    """Convert operating mode (0-6) to raw byte 6 value"""
-    mapping = {0: 18, 1: 19, 2: 24, 3: 33, 4: 34, 5: 35, 6: 40}
-    return mapping.get(value, 0)
+    if value not in mapping:
+        raise ValueError(f"Invalid operating_mode: {value}")
+    return mapping[value]
 
 
 STANDARD_FIELDS = [
@@ -420,8 +457,7 @@ STANDARD_FIELDS = [
         ha_class="enum",
         ha_icon="mdi:fan",
         writable=True,
-        min_value=0,
-        max_value=3,
+        options=QUIET_MODE_OPTIONS,
     ),
     FieldSpec(
         name="zone1_actual_temp",
@@ -522,8 +558,7 @@ STANDARD_FIELDS = [
         ha_class="enum",
         ha_icon="mdi:heating-coil",
         writable=True,
-        min_value=0,
-        max_value=6,
+        options=OPERATING_MODE_OPTIONS,
     ),
     FieldSpec(
         name="dhw_actual_temp",
@@ -553,8 +588,7 @@ STANDARD_FIELDS = [
         ha_icon="mdi:power",
         skip_zero=False,  # 0x00 might be a valid status value
         writable=True,
-        min_value=0,
-        max_value=1,
+        options=HP_STATUS_OPTIONS,
     ),
     FieldSpec(
         name="defrost_status",

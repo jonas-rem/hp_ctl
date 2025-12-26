@@ -45,28 +45,28 @@ class TestEncode:
 
     def test_encode_quiet_mode(self):
         """Quiet mode is correctly encoded to bit field positions"""
-        # level 2 -> 2+1 = 3 = 0b00011
-        # Shifting by 3 bits -> 0b00011 000 = 24
-        msg = Message(packet_type=0x10, fields={"quiet_mode": 2})
+        # Level 2 -> inverse returns 11 (0b01011)
+        # Shifting by 3 bits -> 11 << 3 = 88
+        msg = Message(packet_type=0x10, fields={"quiet_mode": "Level 2"})
 
         encoded = STANDARD_CODEC.encode(msg)
-        assert encoded[7] == 24
+        assert encoded[7] == 88
 
     def test_hp_status_encode(self):
         """HP status (On/Off) is correctly encoded"""
-        msg_on = Message(packet_type=0x10, fields={"hp_status": 1})
+        msg_on = Message(packet_type=0x10, fields={"hp_status": "On"})
         encoded_on = STANDARD_CODEC.encode(msg_on)
         assert encoded_on[4] == 2
 
-        msg_off = Message(packet_type=0x10, fields={"hp_status": 0})
+        msg_off = Message(packet_type=0x10, fields={"hp_status": "Off"})
         encoded_off = STANDARD_CODEC.encode(msg_off)
         assert encoded_off[4] == 1
 
     def test_operating_mode_encode(self):
         """Operating mode is correctly encoded"""
-        msg = Message(packet_type=0x10, fields={"operating_mode": 3})  # DHW
+        msg = Message(packet_type=0x10, fields={"operating_mode": "Heat"})
         encoded = STANDARD_CODEC.encode(msg)
-        assert encoded[6] == 33  # 0x21
+        assert encoded[6] == 0x22  # 34
 
     def test_validation_ranges(self):
         """Values outside valid range raise ValueError"""
