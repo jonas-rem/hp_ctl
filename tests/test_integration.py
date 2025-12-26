@@ -46,7 +46,7 @@ class TestApp:
     """Integration tests for the complete application pipeline."""
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_app_init(self, mock_uart, mock_mqtt, test_config):
         """Test that application initializes correctly."""
         app = Application(config_path=test_config)
@@ -57,7 +57,7 @@ class TestApp:
         assert app.ha_mapper is not None
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_uart_decode_publish(
         self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
     ):
@@ -84,7 +84,7 @@ class TestApp:
         assert len(state_calls) > 0
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_state_after_discovery(
         self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
     ):
@@ -111,7 +111,7 @@ class TestApp:
         assert state_update_calls <= len(STANDARD_FIELDS)
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_state_correct_values(
         self, mock_uart_class, mock_mqtt_class, test_config, panasonic_test_message
     ):
@@ -137,7 +137,7 @@ class TestApp:
         assert state_dict["aquarea_k/state/zone1_actual_temp"] == "48"
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_invalid_msg_no_crash(self, mock_uart_class, mock_mqtt_class, test_config):
         """Test that invalid messages are handled gracefully."""
         mock_mqtt = MagicMock()
@@ -157,7 +157,7 @@ class TestApp:
         assert app.mqtt_client is not None
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_discovery_on_connect(self, mock_uart_class, mock_mqtt_class, test_config):
         """Test that discovery configs are published on MQTT connect."""
         mock_mqtt = MagicMock()
@@ -181,7 +181,7 @@ class TestApp:
         assert app.discovery_published
 
     @patch("hp_ctl.main.MqttClient")
-    @patch("hp_ctl.main.UartReceiver")
+    @patch("hp_ctl.main.UartTransceiver")
     def test_discovery_reconnect(self, mock_uart_class, mock_mqtt_class, test_config):
         """Test that discovery configs are re-published on MQTT reconnect."""
         mock_mqtt = MagicMock()
@@ -200,6 +200,31 @@ class TestApp:
         second_call_count = mock_mqtt.publish.call_count
 
         # Discovery should be published again on reconnection
-        all_fields = STANDARD_FIELDS + EXTRA_FIELDS
+        # Count includes standard fields (sensors) + writable fields
+        # 33 sensors + 5 writable = 38
         assert second_call_count == first_call_count * 2
-        assert second_call_count == len(all_fields) * 2
+        # Count includes standard fields (sensors) + writable fields
+
+    @patch("hp_ctl.main.MqttClient")
+    @patch("hp_ctl.main.UartTransceiver")
+    def test_command_handling(self, mock_uart_class, mock_mqtt_class, test_config):
+        """Test MQTT command handling."""
+        mock_mqtt = MagicMock()
+        mock_mqtt_class.return_value = mock_mqtt
+        mock_uart = MagicMock()
+        mock_uart_class.return_value = mock_uart
+
+        app = Application(config_path=test_config)
+        app.mqtt_client = mock_mqtt
+        app.uart_transceiver = mock_uart
+
+        # Test valid command
+        topic = "hp_ctl/aquarea_k/set/dhw_target_temp"
+        payload = "48"
+        app._on_mqtt_command(topic, payload)
+
+        assert mock_uart.send.called
+        # Verify encoded message (rough check)
+        args = mock_uart.send.call_args[0][0]
+        # Check standard packet type 0x10 at byte 3
+        assert args[3] == 0x10

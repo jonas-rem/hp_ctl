@@ -5,13 +5,13 @@ import logging
 import signal
 import sys
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from hp_ctl.config import load_config
 from hp_ctl.homeassistant import HomeAssistantMapper
 from hp_ctl.mqtt import MqttClient
-from hp_ctl.protocol import EXTRA_FIELDS, STANDARD_FIELDS, HeatPumpProtocol
-from hp_ctl.uart import UartReceiver
+from hp_ctl.protocol import EXTRA_FIELDS, STANDARD_FIELDS, FieldSpec, HeatPumpProtocol, Message
+from hp_ctl.uart import UartTransceiver
 
 logger = logging.getLogger(__name__)
 LOGLEVEL = logging.DEBUG
@@ -34,7 +34,7 @@ class Application:
         self.config = load_config(config_path)
         self.protocol = HeatPumpProtocol(user_limits=self.config.get("limits"))
         self.mqtt_client: Optional[MqttClient] = None
-        self.uart_receiver: Optional[UartReceiver] = None
+        self.uart_transceiver: Optional[UartTransceiver] = None
         self.ha_mapper = HomeAssistantMapper()
         self.discovery_published = False
 
@@ -61,8 +61,76 @@ class Application:
             discovery_configs = self.ha_mapper.message_to_ha_discovery(all_fields)
             for topic, payload in discovery_configs.items():
                 self.mqtt_client.publish(topic, payload)
-            logger.info("Published %d discovery configs", len(discovery_configs))
+
+            # Publish writable entity discovery (NEW)
+            writable_configs = self.ha_mapper.writable_fields_to_ha_discovery(
+                STANDARD_FIELDS, user_limits=self.config.get("limits")
+            )
+            for topic, payload in writable_configs.items():
+                self.mqtt_client.publish(topic, payload)
+
+            logger.info(
+                "Published %d discovery configs", len(discovery_configs) + len(writable_configs)
+            )
             self.discovery_published = True
+
+    def _get_field_by_name(self, name: str) -> FieldSpec:
+        """Find field spec by name in STANDARD_FIELDS."""
+        for field in STANDARD_FIELDS:
+            if field.name == name:
+                return field
+        raise ValueError(f"Unknown field: {name}")
+
+    def _on_mqtt_command(self, topic: str, payload: str) -> None:
+        """Handle incoming MQTT commands from Home Assistant.
+
+        Args:
+            topic: Command topic (e.g., "hp_ctl/aquarea_k/set/dhw_target_temp")
+            payload: Command value (string representation)
+        """
+        # Extract field name from topic
+        # Format: hp_ctl/aquarea_k/set/{field_name}
+        field_name = topic.rsplit("/", 1)[-1]
+
+        try:
+            # Get field spec
+            field = self._get_field_by_name(field_name)
+
+            # Convert payload to appropriate type
+            value: Any
+            if field.options is not None:
+                # String for enum fields (already correct type)
+                value = payload
+            else:
+                # Integer for temperature fields
+                # HA might send "45.0", handle it
+                value = int(float(payload))
+
+            # Validate and encode
+            message = Message(packet_type=0x10, fields={field_name: value})
+            encoded = self.protocol.standard_codec.encode(message)
+
+            # Send via UART
+            if self.uart_transceiver:
+                self.uart_transceiver.send(encoded)
+                logger.info("Sent command: %s = %s", field_name, value)
+            else:
+                logger.warning("UART not ready, cannot send command")
+
+        except ValueError as e:
+            logger.warning("Invalid command %s=%s: %s", field_name, payload, e)
+        except Exception as e:
+            logger.exception("Failed to send command %s=%s: %s", field_name, payload, e)
+
+    def _on_mqtt_connect(self) -> None:
+        """Callback on MQTT connection - publish discovery and subscribe to commands."""
+        self._publish_discovery()
+
+        # Subscribe to command topics
+        if self.mqtt_client:
+            command_topic = f"{self.ha_mapper.get_full_command_topic_prefix()}/#"
+            self.mqtt_client.subscribe(command_topic)
+            logger.info("Subscribed to: %s", command_topic)
 
     def _on_uart_message(self, raw_msg: bytes) -> None:
         """Callback invoked when UART receives a valid message.
@@ -97,14 +165,15 @@ class Application:
                 self.mqtt_client = MqttClient(
                     broker=mqtt_config["broker"],
                     port=mqtt_config["port"],
-                    on_connect=self._publish_discovery,
+                    on_connect=self._on_mqtt_connect,
+                    on_message=self._on_mqtt_command,
                 )
                 self.mqtt_client.connect()
                 logger.info("MQTT client connected")
 
                 # Initialize UART with callback
                 uart_config = self.config["uart"]
-                self.uart_receiver = UartReceiver(
+                self.uart_transceiver = UartTransceiver(
                     port=uart_config["port"],
                     baudrate=uart_config["baudrate"],
                     on_message=self._on_uart_message,
@@ -142,8 +211,8 @@ class Application:
     def shutdown(self) -> None:
         """Shutdown application and cleanup resources."""
         logger.info("Shutting down application")
-        if self.uart_receiver:
-            self.uart_receiver.close()
+        if self.uart_transceiver:
+            self.uart_transceiver.close()
         if self.mqtt_client:
             self.mqtt_client.disconnect()
         logger.info("Application shutdown complete")
