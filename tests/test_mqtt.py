@@ -91,3 +91,36 @@ def test_on_connect_callback_not_invoked_on_fail(mqtt_broker):
 
     assert client.connected is False
     assert len(callback_invoked) == 0
+
+
+def test_mqtt_client_multiple_listeners(mqtt_broker):
+    """Test that multiple listeners are called when a message is received."""
+    client = MqttClient(broker="localhost")
+
+    # Define listeners
+    listener_1_calls = []
+    listener_2_calls = []
+
+    def listener_1(topic, payload):
+        listener_1_calls.append((topic, payload))
+
+    def listener_2(topic, payload):
+        listener_2_calls.append((topic, payload))
+
+    # Add listeners
+    client.add_message_listener(listener_1)
+    client.add_message_listener(listener_2)
+
+    # Simulate message
+    msg = MagicMock()
+    msg.topic = "test/topic"
+    msg.payload = b"test_payload"
+
+    client._on_message(None, None, msg)
+
+    # Verify both listeners were called
+    assert len(listener_1_calls) == 1
+    assert listener_1_calls[0] == ("test/topic", "test_payload")
+
+    assert len(listener_2_calls) == 1
+    assert listener_2_calls[0] == ("test/topic", "test_payload")

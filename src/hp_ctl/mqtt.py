@@ -36,7 +36,9 @@ class MqttClient:
         self.port = port
         self.topic_prefix = topic_prefix
         self.on_connect_callback = on_connect
-        self.on_message_callback = on_message
+        self._message_listeners: list[Callable[[str, str], None]] = []
+        if on_message:
+            self._message_listeners.append(on_message)
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
@@ -86,13 +88,26 @@ class MqttClient:
         logger.debug("Subscribing to: %s", topic)
         self.client.subscribe(topic, qos=1)
 
+    def add_message_listener(self, callback: Callable[[str, str], None]) -> None:
+        """Add a message listener.
+
+        Args:
+            callback: Function to call when a message is received.
+                      Args: (topic, payload)
+        """
+        self._message_listeners.append(callback)
+
     def _on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages."""
-        if self.on_message_callback:
-            topic = msg.topic
-            payload = msg.payload.decode()
-            logger.debug("Received message: %s = %s", topic, payload)
-            self.on_message_callback(topic, payload)
+        topic = msg.topic
+        payload = msg.payload.decode()
+        logger.debug("Received message: %s = %s", topic, payload)
+
+        for listener in self._message_listeners:
+            try:
+                listener(topic, payload)
+            except Exception as e:
+                logger.exception("Error in message listener: %s", e)
 
     def _on_connect(self, client, userdata, connect_flags, reason_code, properties):
         """Callback for when client connects to broker."""
