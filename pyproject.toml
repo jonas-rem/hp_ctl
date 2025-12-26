@@ -16,6 +16,7 @@ dependencies = [
     "pyserial",
     "paho-mqtt>=2.0",
     "PyYAML>=6.0",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ dev = [
     "mypy>=1.0",
     "types-pyserial>=0.1.0",
     "types-PyYAML",
+    "types-requests",
 ]
 
 [project.scripts]
@@ -34,7 +36,7 @@ hp-ctl = "hp_ctl.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["hp_ctl"]
+packages = ["hp_ctl", "hp_ctl.automation"]
 
 [tool.setuptools.package-data]
 hp_ctl = ["py.typed"]
@@ -76,5 +78,3 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
-
-

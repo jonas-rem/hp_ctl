@@ -52,6 +52,12 @@ mkdir -p $USER_SERVICE_DIR
 echo "Creating configuration directory: $USER_CONFIG_DIR"
 mkdir -p $USER_CONFIG_DIR
 
+# Create automation database directory
+echo "Creating automation database directory: /var/lib/hp_ctl"
+sudo mkdir -p /var/lib/hp_ctl
+sudo chown $USER:$USER /var/lib/hp_ctl
+echo "Database directory created and owned by $USER"
+
 # Build and install the package for current user
 echo "Building and installing hp-ctl package..."
 pip3 install --user . --break-system-packages

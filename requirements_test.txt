@@ -1,7 +1,13 @@
 pytest>=7.0
 pytest-cov>=4.0
 pytest-mock>=3.0
+pytest-html>=4.0
 ruff>=0.1.0
 mypy>=1.0
 types-pyserial>=0.1.0
+types-PyYAML
+types-requests
 PyYAML>=6.0
+requests>=2.31.0
+paho-mqtt>=2.0
+pyserial
