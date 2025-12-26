@@ -223,6 +223,146 @@ journalctl --user -u hp-ctl -b
 
 The log level can be adjusted in `src/hp_ctl/main.py` (`LOGLEVEL` constant).
 
+## Automation Module
+
+The automation module provides intelligent data collection and analysis
+for heat pump optimization. When enabled in `config.yaml`, it **always
+runs** for data collection, but automatic control mode can be toggled
+at runtime via MQTT/Home Assistant.
+
+### Operating Modes
+
+- **Manual Mode:** Data collection only (default). Heat pump control
+  remains fully manual via Home Assistant.
+- **Automatic Mode:** Enables intelligent automatic control (future).
+  Toggle via MQTT: `hp_ctl/aquarea_k/automation/mode/set`
+
+### Features
+
+- **Weather Integration:** Fetches 24-hour average outdoor temperature
+  from previous day via Open-Meteo API (free, no API key, once/day)
+- **Energy Tracking:** Continuous logging of heat generation and
+  electrical consumption
+- **COP Calculation:** Automatic calculation of daily coefficient of
+  performance
+- **Persistent Storage:** SQLite database with configurable retention
+  (default: 30 days)
+- **MQTT Publishing:** Daily summaries, real-time status, and mode
+  control for Home Assistant integration
+- **Runtime Mode Switching:** Toggle between manual and automatic mode
+  without restarting
+
+### Configuration
+
+Add the following to your `config.yaml` to enable automation:
+
+```yaml
+automation:
+  enabled: false  # Startup mode: true=automatic, false=manual
+                  # Can be changed at runtime via MQTT
+
+  weather:
+    # Get coordinates from: https://open-meteo.com/
+    # Fetches on startup and daily at midnight (00:00)
+    latitude: 52.52      # Your location latitude
+    longitude: 13.41     # Your location longitude
+
+  # Map outdoor temperature to estimated daily heat demand
+  # Used for future intelligent control features
+  heat_demand_map:
+    - outdoor_temp: -10  # °C
+      daily_kwh: 50      # Estimated kWh needed per day
+    - outdoor_temp: 0
+      daily_kwh: 35
+    - outdoor_temp: 5
+      daily_kwh: 30
+    - outdoor_temp: 10
+      daily_kwh: 20
+    - outdoor_temp: 15
+      daily_kwh: 10
+
+  storage:
+    db_path: /var/lib/hp_ctl/automation.db  # SQLite database location
+    retention_days: 30  # Auto-delete data older than this
+```
+
+The SQLite database is stored at `/var/lib/hp_ctl/automation.db`
+(automatically created by `install.sh`).
+
+### MQTT Topics
+
+**Published by automation (plain values):**
+- `automation/mode` - Current mode ("automatic" or "manual")
+- `automation/outdoor_temp_avg_24h` - 24h average outdoor temp
+- `automation/weather_date` - Date for the weather average
+- `automation/estimated_daily_demand` - Estimated kWh needed today
+- `automation/today/total_heat_kwh` - Heat generated today (kWh)
+- `automation/today/total_consumption_kwh` - Energy consumed today (kWh)
+- `automation/today/avg_cop` - Average COP today
+- `automation/today/runtime_hours` - Heat pump runtime today (h)
+
+**Published by automation (JSON payloads):**
+- `automation/status` - Full status object for debugging
+- `automation/energy/daily` - Completed daily summary (at midnight)
+- `automation/error` - Error messages from weather API
+
+**Command topics (subscribe):**
+- `automation/mode/set` - Change mode: publish "automatic" or "manual"
+
+All topics are prefixed with `hp_ctl/{device_id}/`. Use
+`mosquitto_sub -t 'hp_ctl/+/automation/#' -v` to inspect.
+
+### How It Works
+
+1. **Data Collection:** Every UART message from the heat pump is
+   stored in SQLite, including heat power generation, electrical
+   consumption, compressor frequency, and temperatures.
+
+2. **Weather Updates:** 24-hour average outdoor temperature from the
+   previous day is fetched on startup and then automatically at
+   midnight (00:00) each day. This provides a stable metric that
+   correlates well with daily heat demand.
+
+3. **Energy Integration:** Daily energy totals are calculated using
+   trapezoidal integration of instantaneous power readings.
+
+4. **COP Calculation:** Average coefficient of performance is
+   computed as: `COP = Heat Energy (kWh) / Electrical Energy (kWh)`
+
+5. **Automatic Cleanup:** Data older than `retention_days` is
+   automatically deleted to prevent unbounded database growth.
+
+### Home Assistant Integration
+
+Automation entities are automatically discovered by Home Assistant using
+MQTT discovery. They appear under a separate device: **"Aquarea K
+Automation"**.
+
+Key entities include:
+- **Mode:** Select entity to toggle between Manual and Automatic mode.
+- **Energy Sensors:** Real-time running totals for heat generation,
+  consumption, COP, and runtime.
+- **Weather:** 24h average outdoor temperature from the previous day.
+- **Demand:** Estimated daily heat demand based on configured mapping.
+
+No manual sensor configuration in Home Assistant is required.
+
+### Error Handling
+
+- **Weather API Failure:** Automation pauses and publishes error to
+  MQTT. Resumes automatically when API recovers.
+- **Database Errors:** Logged to systemd journal.
+- **MQTT Disconnection:** Automation pauses until reconnect
+  (automatic retry).
+
+### Future Features
+
+The automation module is the foundation for future intelligent control
+features described in `features.md`, including demand-based
+temperature control, compressor frequency optimization, and blackout
+period scheduling. Current implementation focuses on **data collection
+only** to build historical baselines for future optimization.
+
 ## Disclaimer
 
 This is an independent open source project based on reverse-engineered protocol
