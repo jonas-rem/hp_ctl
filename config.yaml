@@ -11,3 +11,36 @@ limits:
     max: 52
   zone1_heat_target_temp:
     max: 37
+
+# Automation configuration (optional)
+# Data collection always runs when this section is present.
+# The 'enabled' field controls automatic heat pump control mode on startup.
+# Mode can be changed at runtime via MQTT: hp_ctl/aquarea_k/automation/mode/set
+automation:
+  enabled: false  # true = automatic control, false = manual (data collection only)
+
+  weather:
+    # Weather data from Open-Meteo (free, no API key required)
+    # Fetches 24-hour average temperature from the previous day
+    # Automatically fetches on startup and daily at midnight (00:00)
+    # Get your coordinates from: https://open-meteo.com/
+    latitude: 52.52
+    longitude: 13.41
+
+  # Map outdoor temperature to daily heat requirement
+  # System uses linear interpolation between points
+  heat_demand_map:
+    - outdoor_temp: -10  # °C
+      daily_kwh: 50      # kWh required per day
+    - outdoor_temp: 0
+      daily_kwh: 35
+    - outdoor_temp: 5
+      daily_kwh: 30
+    - outdoor_temp: 10
+      daily_kwh: 20
+    - outdoor_temp: 15
+      daily_kwh: 10
+
+  storage:
+    db_path: /var/lib/hp_ctl/automation.db
+    retention_days: 30  # Auto-delete data older than this many days

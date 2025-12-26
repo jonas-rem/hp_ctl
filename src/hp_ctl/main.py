@@ -7,6 +7,7 @@ import sys
 import time
 from typing import Any, Optional
 
+from hp_ctl.automation import AutomationController
 from hp_ctl.config import load_config
 from hp_ctl.homeassistant import HomeAssistantMapper
 from hp_ctl.mqtt import MqttClient
@@ -37,6 +38,7 @@ class Application:
         self.uart_transceiver: Optional[UartTransceiver] = None
         self.ha_mapper = HomeAssistantMapper()
         self.discovery_published = False
+        self.automation_controller: Optional[AutomationController] = None
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
@@ -122,6 +124,10 @@ class Application:
         """Callback on MQTT connection - publish discovery and subscribe to commands."""
         self._publish_discovery()
 
+        # Re-publish automation discovery if controller is active
+        if self.automation_controller:
+            self.automation_controller.publish_discovery()
+
         # Subscribe to command topics
         if self.mqtt_client:
             command_topic = f"{self.ha_mapper.get_full_command_topic_prefix()}/#"
@@ -181,6 +187,17 @@ class Application:
                 )
                 logger.info("UART receiver started on %s", uart_config["port"])
 
+                # Initialize automation controller (always, for data collection)
+                if "automation" in self.config:
+                    logger.info("Initializing automation controller")
+                    self.automation_controller = AutomationController(
+                        config=self.config["automation"],
+                        mqtt_client=self.mqtt_client,
+                        ha_mapper=self.ha_mapper,
+                    )
+                    self.automation_controller.start()
+                    logger.info("Automation controller initialized")
+
                 # Reset retry count on successful connection
                 retry_count = 0
 
@@ -211,6 +228,8 @@ class Application:
     def shutdown(self) -> None:
         """Shutdown application and cleanup resources."""
         logger.info("Shutting down application")
+        if self.automation_controller:
+            self.automation_controller.stop()
         if self.uart_transceiver:
             self.uart_transceiver.close()
         if self.mqtt_client:
