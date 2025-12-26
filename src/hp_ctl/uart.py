@@ -15,8 +15,8 @@ START_DELIMITER = 0x71
 MESSAGE_MIN_LENGTH = 6
 
 
-class UartReceiver:
-    """UART receiver for background listening and message validation.
+class UartTransceiver:
+    """UART transceiver for background listening, sending, and message validation.
 
     Handles delimiter detection, length validation, and CRC checking.
     Emits valid messages via callback.
@@ -72,6 +72,17 @@ class UartReceiver:
         self.serial_conn.close()
         logger.info("UART connection closed")
 
+    def send(self, data: bytes) -> None:
+        """Send data to UART with checksum appended.
+
+        Args:
+            data: Complete message bytes excluding checksum (110 bytes from protocol.encode).
+        """
+        checksum = (0 - sum(data)) & 0xFF
+        message = data + bytes([checksum])
+        logger.debug("Sending %d bytes: %s", len(message), message.hex())
+        self.serial_conn.write(message)
+
     def read_message(self) -> bytes:
         """Read a complete message from UART.
 
@@ -126,7 +137,9 @@ class UartReceiver:
         # Expected: start(1) + length(1) + payload + checksum(1)
         valid = len(message) == 3 + message[1]
         if not valid:
-            logger.warning("Length validation failed: declared=%d, actual=%d", message[1], len(message) - 3)
+            logger.warning(
+                "Length validation failed: declared=%d, actual=%d", message[1], len(message) - 3
+            )
         return valid
 
     def validate_crc(self, message: bytes) -> bool:
@@ -154,7 +167,7 @@ class UartReceiver:
                 "CRC validation failed: sum(all bytes) & 0xFF = 0x%02x (expected 0x00), "
                 "checksum byte = 0x%02x",
                 total_sum,
-                message[-1]
+                message[-1],
             )
         return valid
 
@@ -172,7 +185,6 @@ class UartReceiver:
             logger.debug("Message parsed: %s", message.hex())
             return message
         return None
-
 
     def _listen_loop(self) -> None:
         """Background loop to check for data and emit via callback.

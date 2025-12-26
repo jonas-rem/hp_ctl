@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import yaml
 
-from hp_ctl.uart import UartReceiver
+from hp_ctl.uart import UartTransceiver
 
 
 def load_test_case(name: str) -> bytes:
@@ -39,11 +39,12 @@ def test_uart_receiver_callback(mocker):
     mocker.patch("serial.Serial", return_value=mock_serial)
 
     callback_called = []
+
     def mock_callback(message: bytes):
         callback_called.append(message)
 
     # Thread starts automatically in __init__ with poll_interval
-    receiver = UartReceiver(
+    receiver = UartTransceiver(
         port="/dev/ttyUSB0",
         baudrate=9600,
         on_message=mock_callback,
@@ -64,7 +65,7 @@ def test_uart_validate_length(mocker):
     mock_serial.read.return_value = b""
     mocker.patch("serial.Serial", return_value=mock_serial)
 
-    receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600)
+    receiver = UartTransceiver(port="/dev/ttyUSB0", baudrate=9600)
 
     # Valid messages
     valid_msg = load_test_case("panasonic_answer")
@@ -88,7 +89,7 @@ def test_uart_validate_crc(mocker):
     mock_serial.read.return_value = b""
     mocker.patch("serial.Serial", return_value=mock_serial)
 
-    receiver = UartReceiver(port="/dev/ttyUSB0", baudrate=9600)
+    receiver = UartTransceiver(port="/dev/ttyUSB0", baudrate=9600)
 
     # Valid messages
     valid_msg = load_test_case("panasonic_answer")
@@ -99,3 +100,27 @@ def test_uart_validate_crc(mocker):
     assert receiver.validate_crc(invalid_checksum) is False
 
     receiver.close()
+
+
+def test_uart_send(mocker):
+    """Test UART sending with checksum calculation."""
+    mock_serial = MagicMock()
+    mocker.patch("serial.Serial", return_value=mock_serial)
+
+    transceiver = UartTransceiver(port="/dev/ttyUSB0")
+
+    # Data to send (without checksum)
+    # Start(0xF1) + Type(0x10) + Data(0x01)
+    data = bytes([0xF1, 0x10, 0x01])
+    # Checksum: (0 - (0xF1+0x10+0x01)) & 0xFF
+    # 0xF1=241, 0x10=16, 0x01=1. Sum=258.
+    # 258 & 0xFF = 2.
+    # 0 - 2 = -2. -2 & 0xFF = 254 (0xFE).
+    expected_checksum = 0xFE
+    expected_msg = data + bytes([expected_checksum])
+
+    transceiver.send(data)
+
+    mock_serial.write.assert_called_once_with(expected_msg)
+
+    transceiver.close()
