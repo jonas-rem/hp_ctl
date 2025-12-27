@@ -27,7 +27,7 @@ automation:
     latitude: 52.52
     longitude: 13.41
 
-  # Map outdoor temperature to daily heat requirement
+  # Mapping outdoor temperature to daily heat requirement
   # System uses linear interpolation between points
   heat_demand_map:
     - outdoor_temp: -10  # °C
@@ -42,6 +42,15 @@ automation:
       daily_kwh: 10
     - outdoor_temp: 20
       daily_kwh: 0
+
+  # Time periods when the heat pump should be forced OFF
+  night_off_periods:
+    - start: "22:00"
+      end: "06:00"
+
+  # Parameters for the control algorithm
+  ramping:
+    min_delta_t: 3.0     # Target delta T (outlet - inlet)
 
   storage:
     db_path: /var/lib/hp_ctl/automation.db

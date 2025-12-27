@@ -13,7 +13,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Migration SQL statements keyed by version
 MIGRATIONS = {
@@ -37,7 +37,11 @@ MIGRATIONS = {
         );
 
         INSERT OR REPLACE INTO schema_version (version) VALUES (1);
-    """
+    """,
+    2: """
+        ALTER TABLE snapshots ADD COLUMN zone1_actual_temp REAL;
+        UPDATE schema_version SET version = 2;
+    """,
 }
 
 
@@ -52,6 +56,7 @@ class HeatPumpSnapshot:
     compressor_freq: Optional[int] = None
     inlet_water_temp: Optional[float] = None
     outlet_water_temp: Optional[float] = None
+    zone1_actual_temp: Optional[float] = None
     hp_status: Optional[str] = None
     operating_mode: Optional[str] = None
 
@@ -125,8 +130,8 @@ class AutomationStorage:
             INSERT OR REPLACE INTO snapshots (
                 timestamp, outdoor_temp, heat_power_generation, heat_power_consumption,
                 compressor_freq, inlet_water_temp, outlet_water_temp,
-                hp_status, operating_mode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                zone1_actual_temp, hp_status, operating_mode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot.timestamp.isoformat(),
@@ -136,6 +141,7 @@ class AutomationStorage:
                 snapshot.compressor_freq,
                 snapshot.inlet_water_temp,
                 snapshot.outlet_water_temp,
+                snapshot.zone1_actual_temp,
                 snapshot.hp_status,
                 snapshot.operating_mode,
             ),
@@ -174,6 +180,7 @@ class AutomationStorage:
                     compressor_freq=row["compressor_freq"],
                     inlet_water_temp=row["inlet_water_temp"],
                     outlet_water_temp=row["outlet_water_temp"],
+                    zone1_actual_temp=row["zone1_actual_temp"],
                     hp_status=row["hp_status"],
                     operating_mode=row["operating_mode"],
                 )

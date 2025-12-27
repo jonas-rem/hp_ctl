@@ -5,8 +5,10 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from threading import Event, Thread
+from typing import Any, Callable, Optional
 
+from hp_ctl.automation.algorithm import AutomationAction, HeatingAlgorithm
 from hp_ctl.automation.config import get_heat_demand_for_temp, validate_automation_config
 from hp_ctl.automation.discovery import AutomationDiscovery
 from hp_ctl.automation.storage import AutomationStorage, HeatPumpSnapshot
@@ -25,6 +27,7 @@ class AutomationController:
         config: dict[str, Any],
         mqtt_client: MqttClient,
         ha_mapper: HomeAssistantMapper,
+        command_callback: Optional[Callable[[str, Any], None]] = None,
     ) -> None:
         """Initialize automation controller.
 
@@ -35,6 +38,7 @@ class AutomationController:
             config: Automation configuration dictionary.
             mqtt_client: MQTT client instance (shared with main app).
             ha_mapper: Home Assistant mapper for discovery.
+            command_callback: Callback to send commands back to heat pump.
         """
         # Validate config
         validate_automation_config(config)
@@ -43,6 +47,7 @@ class AutomationController:
         self.mqtt_client = mqtt_client
         self.ha_mapper = ha_mapper
         self.device_id = ha_mapper.device_id
+        self.command_callback = command_callback
 
         # Initialize discovery helper for automation entities
         self.discovery = AutomationDiscovery(
@@ -60,6 +65,9 @@ class AutomationController:
         self.storage = AutomationStorage(db_path=storage_config["db_path"])
         self.retention_days = storage_config["retention_days"]
 
+        # Initialize algorithm
+        self.algorithm = HeatingAlgorithm(config)
+
         # Initialize weather client (always - needed for data collection)
         weather_config = config["weather"]
         self.weather_client = WeatherAPIClient(
@@ -76,6 +84,11 @@ class AutomationController:
         self.current_snapshot = HeatPumpSnapshot(timestamp=datetime.now())
         self.last_weather_update: Optional[datetime] = None
         self.last_cleanup: Optional[datetime] = None
+        self.last_action = AutomationAction()
+
+        # Control loop thread
+        self._control_thread: Optional[Thread] = None
+        self._stop_event = Event()
 
         # Error state
         self.automation_paused = False
@@ -105,18 +118,20 @@ class AutomationController:
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/compressor_freq",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/inlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/outlet_water_temp",
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/zone1_actual_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/hp_status",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/operating_mode",
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/zone1_heat_target_temp",
         ]
 
         for topic in state_topics:
             self.mqtt_client.subscribe(topic)
             logger.debug("Subscribed to %s", topic)
 
-        # Subscribe to automation control command topic
-        control_topic = f"{self.ha_mapper.topic_prefix}/{self.device_id}/automation/mode/set"
-        self.mqtt_client.subscribe(control_topic)
-        logger.info("Subscribed to automation control: %s", control_topic)
+        # Subscribe to automation control command topics
+        self.mqtt_client.subscribe(
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/automation/mode/set"
+        )
 
         # Register message listener
         self.mqtt_client.add_message_listener(self._on_message_received)
@@ -127,6 +142,11 @@ class AutomationController:
         # Start weather fetching
         self.weather_client.start()
 
+        # Start control loop thread
+        self._stop_event.clear()
+        self._control_thread = Thread(target=self._control_loop, daemon=True)
+        self._control_thread.start()
+
         # Publish initial automation mode and status
         self._publish_automation_mode()
         self._publish_status()
@@ -136,6 +156,11 @@ class AutomationController:
     def stop(self) -> None:
         """Stop automation controller."""
         logger.info("Stopping automation controller")
+
+        # Stop control loop
+        self._stop_event.set()
+        if self._control_thread:
+            self._control_thread.join(timeout=5)
 
         # Stop weather client
         self.weather_client.stop()
@@ -153,12 +178,7 @@ class AutomationController:
             self._on_mqtt_state_message(topic, payload)
 
     def _on_automation_mode_command(self, topic: str, payload: str) -> None:
-        """Handle automation mode change command from MQTT.
-
-        Args:
-            topic: MQTT topic (hp_ctl/{device_id}/automation/mode/set)
-            payload: "automatic" or "manual"
-        """
+        """Handle automation mode change command from MQTT."""
         payload_lower = payload.strip().lower()
 
         if payload_lower == "automatic":
@@ -206,10 +226,15 @@ class AutomationController:
                 self.current_snapshot.inlet_water_temp = float(payload)
             elif field_name == "outlet_water_temp":
                 self.current_snapshot.outlet_water_temp = float(payload)
+            elif field_name == "zone1_actual_temp":
+                self.current_snapshot.zone1_actual_temp = float(payload)
             elif field_name == "hp_status":
                 self.current_snapshot.hp_status = payload
             elif field_name == "operating_mode":
                 self.current_snapshot.operating_mode = payload
+            elif field_name == "zone1_heat_target_temp":
+                # We don't store this in snapshot currently but good for monitoring
+                pass
 
             # Update timestamp
             self.current_snapshot.timestamp = datetime.now()
@@ -309,6 +334,72 @@ class AutomationController:
         for topic, payload in discovery_configs.items():
             self.mqtt_client.publish(topic, payload)
 
+    def _control_loop(self) -> None:
+        """Background loop for active heat pump control (runs every 10 min)."""
+        logger.info("Automation control loop started (interval: 10 min)")
+
+        while not self._stop_event.wait(timeout=600):  # 10 minutes
+            if not self.automatic_mode_enabled or self.automation_paused:
+                continue
+
+            try:
+                self._run_control_logic()
+            except Exception as e:
+                logger.exception("Error in automation control logic: %s", e)
+
+    def _run_control_logic(self) -> None:
+        """Execute the heating algorithm and send commands."""
+        # 1. Gather inputs
+        now = datetime.now()
+        summary = self.storage.get_daily_summary(now)
+        actual_heat = summary.total_heat_kwh if summary else 0.0
+
+        last_weather = self.weather_client.get_last_data()
+        outdoor_avg = (
+            last_weather.outdoor_temp_avg_24h
+            if last_weather
+            else self.current_snapshot.outdoor_temp
+        )
+
+        if outdoor_avg is None:
+            logger.warning("Control loop: No outdoor temperature data skipping")
+            return
+
+        demand = get_heat_demand_for_temp(self.heat_demand_map, outdoor_avg)
+
+        # 2. Call algorithm
+        action = self.algorithm.decide(
+            current_time=now,
+            outdoor_temp_avg_24h=outdoor_avg,
+            actual_heat_kwh_today=actual_heat,
+            estimated_demand_kwh=demand,
+            current_outlet_temp=self.current_snapshot.outlet_water_temp or 0.0,
+            current_inlet_temp=self.current_snapshot.inlet_water_temp or 0.0,
+            zone1_actual_temp=self.current_snapshot.zone1_actual_temp or 0.0,
+            current_hp_status=self.current_snapshot.hp_status or "Off",
+            heat_power_generation=self.current_snapshot.heat_power_generation or 0.0,
+            heat_power_consumption=self.current_snapshot.heat_power_consumption or 0.0,
+        )
+        self.last_action = action
+
+        logger.info("Automation decision: %s (Reason: %s)", action, action.reason)
+
+        # 3. Execute actions
+        if self.command_callback:
+            if action.hp_status and action.hp_status != self.current_snapshot.hp_status:
+                self.command_callback("hp_status", action.hp_status)
+
+            if action.target_temp is not None:
+                # We only send target_temp if HP is On
+                is_on = (action.hp_status == "On") or (
+                    action.hp_status is None and self.current_snapshot.hp_status == "On"
+                )
+                if is_on:
+                    self.command_callback("zone1_heat_target_temp", action.target_temp)
+
+        # 4. Publish active target for monitoring
+        self._publish_status()
+
     def _publish_automation_mode(self) -> None:
         """Publish current automation mode to MQTT."""
         mode_topic = f"{self.device_id}/automation/mode"
@@ -333,8 +424,15 @@ class AutomationController:
             self.mqtt_client.publish(f"{base}/weather_date", status["weather_date"])
         if status.get("estimated_daily_demand_kwh") is not None:
             self.mqtt_client.publish(
-                f"{base}/estimated_daily_demand", str(status["estimated_daily_demand_kwh"])
+                f"{base}/estimated_daily_demand",
+                str(status["estimated_daily_demand_kwh"]),
             )
+        if status.get("active_target_temp") is not None:
+            self.mqtt_client.publish(
+                f"{base}/active_target_temp", str(status["active_target_temp"])
+            )
+        if status.get("reason"):
+            self.mqtt_client.publish(f"{base}/reason", status["reason"])
 
         # Today's data
         if "today" in status:
@@ -378,6 +476,8 @@ class AutomationController:
             "outdoor_temp_avg_24h": outdoor_temp_avg_24h,
             "weather_date": weather_date,  # Which day this average represents
             "estimated_daily_demand_kwh": estimated_demand,
+            "active_target_temp": self.last_action.target_temp,
+            "reason": self.last_action.reason,
             "db_snapshot_count": self.storage.get_snapshot_count(),
             "last_weather_update": (
                 self.last_weather_update.isoformat() if self.last_weather_update else None

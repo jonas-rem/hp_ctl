@@ -49,7 +49,8 @@ class AutomationDiscovery:
 
         # 1. Mode Select
         mode_key = "mode"
-        configs[f"homeassistant/select/{self.automation_device_id}/{mode_key}/config"] = {
+        topic = f"homeassistant/select/{self.automation_device_id}/{mode_key}/config"
+        configs[topic] = {
             "name": "Mode",
             "unique_id": f"{self.automation_device_id}_{mode_key}",
             "state_topic": f"{self.base_topic}/{mode_key}",
@@ -85,9 +86,10 @@ class AutomationDiscovery:
                 config["state_class"] = state_class
             if icon:
                 config["icon"] = icon
-            configs[
+            conf_topic = (
                 f"homeassistant/sensor/{self.automation_device_id}/{key.replace('/', '_')}/config"
-            ] = config
+            )
+            configs[conf_topic] = config
 
         # 2. Weather & Demand
         add_sensor(
@@ -105,6 +107,15 @@ class AutomationDiscovery:
             device_class="energy",
             state_class="total",
         )
+        add_sensor(
+            "active_target_temp",
+            "Active Target Temperature",
+            unit="°C",
+            device_class="temperature",
+            state_class="measurement",
+            icon="mdi:target",
+        )
+        add_sensor("reason", "Automation Reason", icon="mdi:information-outline")
 
         # 3. Today's Running Totals
         add_sensor(

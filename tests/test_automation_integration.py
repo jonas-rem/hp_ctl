@@ -71,8 +71,8 @@ class TestAutomationIntegration:
             or "homeassistant/select/aquarea_k_automation" in str(call)
         ]
 
-        # We expect 8 entities
-        assert len(discovery_calls) == 8
+        # We expect 10 entities
+        assert len(discovery_calls) == 10
 
         # Check specific entity
         mode_discovery = [c for c in discovery_calls if "mode/config" in str(c)]

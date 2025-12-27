@@ -35,7 +35,7 @@ def test_database_initialization(temp_db):
     # Check schema version
     cursor.execute("SELECT version FROM schema_version")
     version = cursor.fetchone()[0]
-    assert version == 1
+    assert version == 2
 
 
 def test_insert_and_retrieve_snapshot(temp_db):
@@ -50,6 +50,7 @@ def test_insert_and_retrieve_snapshot(temp_db):
         compressor_freq=45,
         inlet_water_temp=35.0,
         outlet_water_temp=40.0,
+        zone1_actual_temp=38.0,
         hp_status="On",
         operating_mode="Heat",
     )
@@ -68,6 +69,7 @@ def test_insert_and_retrieve_snapshot(temp_db):
     assert retrieved.outdoor_temp == 5.5
     assert retrieved.heat_power_generation == 3000.0
     assert retrieved.compressor_freq == 45
+    assert retrieved.zone1_actual_temp == 38.0
 
 
 def test_daily_summary_calculation(temp_db):

@@ -120,6 +120,30 @@ class Application:
         except Exception as e:
             logger.exception("Failed to send command %s=%s: %s", field_name, payload, e)
 
+    def send_command(self, field_name: str, value: Any) -> None:
+        """Send a command directly to the heat pump.
+
+        Used by automation controller.
+
+        Args:
+            field_name: Name of the field to set.
+            value: Value to set (already converted to appropriate type).
+        """
+        try:
+            # Validate and encode
+            message = Message(packet_type=0x10, fields={field_name: value})
+            encoded = self.protocol.standard_codec.encode(message)
+
+            # Send via UART
+            if self.uart_transceiver:
+                self.uart_transceiver.send(encoded)
+                logger.info("Sent automation command: %s = %s", field_name, value)
+            else:
+                logger.warning("UART not ready, cannot send automation command")
+
+        except Exception as e:
+            logger.exception("Failed to send automation command %s=%s: %s", field_name, value, e)
+
     def _on_mqtt_connect(self) -> None:
         """Callback on MQTT connection - publish discovery and subscribe to commands."""
         self._publish_discovery()
@@ -194,6 +218,7 @@ class Application:
                         config=self.config["automation"],
                         mqtt_client=self.mqtt_client,
                         ha_mapper=self.ha_mapper,
+                        command_callback=self.send_command,
                     )
                     self.automation_controller.start()
                     logger.info("Automation controller initialized")
