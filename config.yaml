@@ -40,6 +40,8 @@ automation:
       daily_kwh: 20
     - outdoor_temp: 15
       daily_kwh: 10
+    - outdoor_temp: 20
+      daily_kwh: 0
 
   storage:
     db_path: /var/lib/hp_ctl/automation.db
