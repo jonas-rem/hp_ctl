@@ -13,6 +13,7 @@ def algorithm():
     config = {
         "night_off_periods": [{"start": "22:00", "end": "06:00"}],
         "ramping": {"min_delta_t": 3.0},
+        "dhw": {"enabled": True, "start_time": "13:00", "target_temp": 50.0},
     }
     return HeatingAlgorithm(config)
 
@@ -43,6 +44,8 @@ def test_kwh_bucket_logic(algorithm):
         current_inlet_temp=30.0,
         zone1_actual_temp=33.0,
         current_hp_status="On",
+        current_operating_mode="Heat",
+        three_way_valve="Room",
         heat_power_generation=5000.0,
         heat_power_consumption=1000.0,
     )
@@ -64,6 +67,8 @@ def test_ramping_logic_low_delta(algorithm):
         current_inlet_temp=33.0,
         zone1_actual_temp=34.0,
         current_hp_status="On",
+        current_operating_mode="Heat",
+        three_way_valve="Room",
         heat_power_generation=3000.0,
         heat_power_consumption=800.0,
     )
@@ -85,8 +90,55 @@ def test_ramping_logic_high_delta(algorithm):
         current_inlet_temp=30.0,
         zone1_actual_temp=34.5,
         current_hp_status="On",
+        current_operating_mode="Heat",
+        three_way_valve="Room",
         heat_power_generation=3000.0,
         heat_power_consumption=800.0,
     )
     assert action.hp_status == "On"
     assert action.target_temp == 34.5  # matches zone1_actual_temp
+
+
+def test_dhw_trigger_window(algorithm):
+    """Test DHW trigger during its window."""
+    now = datetime.strptime("13:05", "%H:%M")
+
+    action = algorithm.decide(
+        current_time=now,
+        outdoor_temp_avg_24h=5.0,
+        actual_heat_kwh_today=10.0,
+        estimated_demand_kwh=30.0,
+        current_outlet_temp=35.0,
+        current_inlet_temp=30.0,
+        zone1_actual_temp=34.5,
+        current_hp_status="On",
+        current_operating_mode="Heat",
+        three_way_valve="Room",
+        heat_power_generation=3000.0,
+        heat_power_consumption=800.0,
+    )
+    assert action.operating_mode == "Heat+DHW"
+    assert action.dhw_target_temp == 50.0
+    assert "DHW trigger window" in action.reason
+
+
+def test_dhw_completion(algorithm):
+    """Test switching back to Heat once DHW is done."""
+    now = datetime.strptime("14:30", "%H:%M")  # Past 1-hour trigger window
+
+    action = algorithm.decide(
+        current_time=now,
+        outdoor_temp_avg_24h=5.0,
+        actual_heat_kwh_today=10.0,
+        estimated_demand_kwh=30.0,
+        current_outlet_temp=35.0,
+        current_inlet_temp=30.0,
+        zone1_actual_temp=34.5,
+        current_hp_status="On",
+        current_operating_mode="Heat+DHW",
+        three_way_valve="Room",  # Valve switched back!
+        heat_power_generation=3000.0,
+        heat_power_consumption=800.0,
+    )
+    assert action.operating_mode == "Heat"
+    assert "DHW finished" in action.reason

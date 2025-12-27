@@ -105,6 +105,24 @@ def validate_automation_config(config: dict[str, Any]) -> None:
         if not isinstance(ramping, dict):
             raise ValueError("automation.ramping must be a dictionary")
 
+    # Validate dhw section
+    if "dhw" in config:
+        dhw = config["dhw"]
+        if not isinstance(dhw, dict):
+            raise ValueError("automation.dhw must be a dictionary")
+        if dhw.get("enabled", False):
+            if "start_time" not in dhw or "target_temp" not in dhw:
+                raise ValueError("DHW requires 'start_time' and 'target_temp'")
+            # Time format check
+            time_str = dhw["start_time"]
+            try:
+                parts = time_str.split(":")
+                h, m = int(parts[0]), int(parts[1])
+                if not (0 <= h <= 23 and 0 <= m <= 59):
+                    raise ValueError()
+            except (ValueError, IndexError):
+                raise ValueError(f"Invalid DHW start_time: {time_str}")
+
     # Validate storage section
     if "storage" not in config:
         raise ValueError("Missing required section: automation.storage")

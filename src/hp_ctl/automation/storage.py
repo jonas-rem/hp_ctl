@@ -59,6 +59,8 @@ class HeatPumpSnapshot:
     zone1_actual_temp: Optional[float] = None
     hp_status: Optional[str] = None
     operating_mode: Optional[str] = None
+    # Runtime-only field (not persisted to DB)
+    three_way_valve: Optional[str] = None
 
 
 @dataclass

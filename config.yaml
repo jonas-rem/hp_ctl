@@ -48,6 +48,12 @@ automation:
     - start: "22:00"
       end: "06:00"
 
+  # Domestic Hot Water (DHW) schedule
+  dhw:
+    enabled: true
+    start_time: "13:00"
+    target_temp: 45
+
   # Parameters for the control algorithm
   ramping:
     min_delta_t: 3.0     # Target delta T (outlet - inlet)

@@ -592,12 +592,12 @@ STANDARD_FIELDS = [
         options=HP_STATUS_OPTIONS,
     ),
     FieldSpec(
-        name="defrost_status",
+        name="three_way_valve",
         byte_offset=111,
         converter=defrost_converter,
         unit="",
         ha_class="enum",
-        ha_icon="mdi:snowflake-melt",
+        ha_icon="mdi:valve",
     ),
     FieldSpec(
         name="hp_power",

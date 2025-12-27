@@ -38,7 +38,7 @@ test_cases:
       dhw_actual_temp: 42
       pump_speed: 1350
       hp_status: "On"
-      defrost_status: "Valve:DHW, Defrost:Inactive"
+      three_way_valve: "Valve:DHW, Defrost:Inactive"
       hp_power: 5
       fan1_motor_speed: 880
       discharge_temp: 77

@@ -119,9 +119,11 @@ class AutomationController:
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/inlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/outlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/zone1_actual_temp",
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/three_way_valve",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/hp_status",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/operating_mode",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/zone1_heat_target_temp",
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/dhw_target_temp",
         ]
 
         for topic in state_topics:
@@ -228,6 +230,14 @@ class AutomationController:
                 self.current_snapshot.outlet_water_temp = float(payload)
             elif field_name == "zone1_actual_temp":
                 self.current_snapshot.zone1_actual_temp = float(payload)
+            elif field_name == "three_way_valve":
+                # Parse valve state from combined string: "Valve:Room, Defrost:Inactive"
+                if "Valve:DHW" in payload:
+                    self.current_snapshot.three_way_valve = "DHW"
+                elif "Valve:Room" in payload:
+                    self.current_snapshot.three_way_valve = "Room"
+                else:
+                    self.current_snapshot.three_way_valve = "Unknown"
             elif field_name == "hp_status":
                 self.current_snapshot.hp_status = payload
             elif field_name == "operating_mode":
@@ -377,6 +387,8 @@ class AutomationController:
             current_inlet_temp=self.current_snapshot.inlet_water_temp or 0.0,
             zone1_actual_temp=self.current_snapshot.zone1_actual_temp or 0.0,
             current_hp_status=self.current_snapshot.hp_status or "Off",
+            current_operating_mode=self.current_snapshot.operating_mode or "Heat",
+            three_way_valve=self.current_snapshot.three_way_valve or "Room",
             heat_power_generation=self.current_snapshot.heat_power_generation or 0.0,
             heat_power_consumption=self.current_snapshot.heat_power_consumption or 0.0,
         )
@@ -388,6 +400,15 @@ class AutomationController:
         if self.command_callback:
             if action.hp_status and action.hp_status != self.current_snapshot.hp_status:
                 self.command_callback("hp_status", action.hp_status)
+
+            if (
+                action.operating_mode
+                and action.operating_mode != self.current_snapshot.operating_mode
+            ):
+                self.command_callback("operating_mode", action.operating_mode)
+
+            if action.dhw_target_temp is not None:
+                self.command_callback("dhw_target_temp", action.dhw_target_temp)
 
             if action.target_temp is not None:
                 # We only send target_temp if HP is On

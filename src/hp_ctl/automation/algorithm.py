@@ -5,7 +5,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,9 @@ class AutomationAction:
     """Represents a set of commands suggested by the algorithm."""
 
     hp_status: Optional[str] = None  # "On" or "Off"
+    operating_mode: Optional[str] = None
     target_temp: Optional[float] = None
+    dhw_target_temp: Optional[float] = None
     reason: str = "No action"
 
 
@@ -54,6 +56,8 @@ class HeatingAlgorithm:
         current_inlet_temp: float,
         zone1_actual_temp: float,
         current_hp_status: str,
+        current_operating_mode: str,
+        three_way_valve: str,
         heat_power_generation: float,
         heat_power_consumption: float,
     ) -> AutomationAction:
@@ -68,6 +72,8 @@ class HeatingAlgorithm:
             current_inlet_temp: Current inlet water temperature.
             zone1_actual_temp: Zone 1 actual temperature (e.g. buffer middle).
             current_hp_status: Current heat pump status ("On"/"Off").
+            current_operating_mode: Current operating mode.
+            three_way_valve: Current 3-way valve position ("Room"/"DHW").
             heat_power_generation: Momentary heat generation in Watts.
             heat_power_consumption: Momentary electrical consumption in Watts.
 
@@ -78,11 +84,41 @@ class HeatingAlgorithm:
         if self.is_in_night_off_period(current_time):
             return AutomationAction(hp_status="Off", reason="Night-off period active")
 
-        # 2. Demand Check (Bucket Logic)
+        # 2. DHW Logic (Priority)
+        dhw_config = self.config.get("dhw", {})
+        if dhw_config.get("enabled", False):
+            start_time_str = dhw_config["start_time"]
+            now_time = current_time.time()
+
+            # Trigger DHW within a 1-hour window starting at start_time.
+            # Once DHW completes (valve returns to Room), mode reverts to Heat.
+            # Re-triggering within the window is harmless as water is already hot.
+            trigger_start = datetime.strptime(start_time_str, "%H:%M").time()
+            trigger_end = (
+                datetime.combine(datetime.min, trigger_start) + timedelta(hours=1)
+            ).time()
+
+            if trigger_start <= now_time <= trigger_end:
+                if "DHW" not in current_operating_mode:
+                    return AutomationAction(
+                        hp_status="On",
+                        operating_mode="Heat+DHW",
+                        dhw_target_temp=dhw_config["target_temp"],
+                        reason=f"DHW trigger window ({start_time_str}-{trigger_end.strftime('%H:%M')})",
+                    )
+            # Switch back to Heat only if DHW is finished (valve is Room)
+            # and we are past the trigger window
+            elif "DHW" in current_operating_mode and three_way_valve == "Room":
+                return AutomationAction(
+                    operating_mode="Heat",
+                    reason="DHW finished (valve returned to Room)",
+                )
+
+        # 3. Demand Check (Bucket Logic)
         if actual_heat_kwh_today >= estimated_demand_kwh:
             return AutomationAction(hp_status="Off", reason="Daily heat demand met")
 
-        # 3. Target Temperature Calculation
+        # 4. Target Temperature Calculation
         ramping_config = self.config.get("ramping", {})
         min_delta_t = ramping_config.get("min_delta_t", 3.0)
 
