@@ -15,8 +15,6 @@ from hp_ctl.protocol import EXTRA_FIELDS, STANDARD_FIELDS, FieldSpec, HeatPumpPr
 from hp_ctl.uart import UartTransceiver
 
 logger = logging.getLogger(__name__)
-LOGLEVEL = logging.DEBUG
-
 
 # Retry configuration
 RETRY_INTERVAL = 3  # seconds
@@ -264,8 +262,13 @@ class Application:
 
 def main() -> None:
     """Entry point for the application."""
+    # Load config first to get log level
+    config = load_config("config.yaml")
+    log_level_str = config.get("log_level", "INFO").upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+
     logging.basicConfig(
-        level=LOGLEVEL,
+        level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )

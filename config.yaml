@@ -6,6 +6,10 @@ mqtt:
   broker: localhost
   port: 1883
 
+# Logging configuration
+# Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: INFO
+
 limits:
   dhw_target_temp:
     max: 52
