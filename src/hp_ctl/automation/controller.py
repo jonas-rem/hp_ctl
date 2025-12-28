@@ -394,7 +394,7 @@ class AutomationController:
         )
         self.last_action = action
 
-        logger.info("Automation decision: %s (Reason: %s)", action, action.reason)
+        logger.debug("Automation decision: %s (Reason: %s)", action, action.reason)
 
         # 3. Execute actions
         if self.command_callback:

@@ -129,14 +129,14 @@ class MessageCodec:
                 field.unit or "",
             )
 
-        # Log all converted values in a readable format if logger is at INFO level
-        if logger.isEnabledFor(logging.INFO):
+        # Log all converted values in a readable format if logger is at DEBUG level
+        if logger.isEnabledFor(logging.DEBUG):
             lines = [f"{len(values)} fields:"]
             for name, value in values.items():
                 unit = next((f.unit for f in self.fields if f.name == name), "") or ""
                 unit_str = f" {unit}" if unit else ""
                 lines.append(f"  {name:<30} {value}{unit_str}")
-            logger.info("\n".join(lines))
+            logger.debug("\n".join(lines))
 
         logger.debug("Message decoded successfully: %d fields", len(values))
         return Message(packet_type=packet_type, fields=values)
