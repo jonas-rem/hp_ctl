@@ -46,7 +46,7 @@ automation:
   # Time periods when the heat pump should be forced OFF
   night_off_periods:
     - start: "22:00"
-      end: "06:00"
+      end: "09:30"
 
   # Domestic Hot Water (DHW) schedule
   dhw:
