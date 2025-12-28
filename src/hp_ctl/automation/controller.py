@@ -345,10 +345,10 @@ class AutomationController:
             self.mqtt_client.publish(topic, payload)
 
     def _control_loop(self) -> None:
-        """Background loop for active heat pump control (runs every 10 min)."""
-        logger.info("Automation control loop started (interval: 10 min)")
+        """Background loop for active heat pump control (runs every 1 min)."""
+        logger.info("Automation control loop started (interval: 1 min)")
 
-        while not self._stop_event.wait(timeout=600):  # 10 minutes
+        while not self._stop_event.wait(timeout=60):  # 1 minute
             if not self.automatic_mode_enabled or self.automation_paused:
                 continue
 
