@@ -204,9 +204,12 @@ class UartTransceiver:
                 if message and self.on_message:
                     logger.debug("Invoking callback with message")
                     self.on_message(message)
+                else:
+                    # No message received, sleep to prevent busy-wait
+                    time.sleep(self.poll_interval)
             except NotImplementedError:
                 # Expected during development; re-raise to avoid silent failures
                 raise
             except Exception as e:  # pylint: disable=broad-except
                 logger.exception("UART error: %s", e)
-            time.sleep(self.poll_interval)
+                time.sleep(self.poll_interval)
