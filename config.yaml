@@ -21,7 +21,7 @@ limits:
 # The 'enabled' field controls automatic heat pump control mode on startup.
 # Mode can be changed at runtime via MQTT: hp_ctl/aquarea_k/automation/mode/set
 automation:
-  enabled: false  # true = automatic control, false = manual (data collection only)
+  enabled: true # true = automatic control, false = manual (data collection only)
 
   weather:
     # Weather data from Open-Meteo (free, no API key required)
