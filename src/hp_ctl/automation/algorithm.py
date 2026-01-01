@@ -130,14 +130,14 @@ class HeatingAlgorithm:
         # the current actual temperature to nudge the compressor frequency up.
         delta_t = current_outlet_temp - current_inlet_temp
         if delta_t > min_delta_t:
-            suggested_target = zone1_actual_temp
-            reason_detail = f"delta_t ({delta_t:.1f}K) > min ({min_delta_t}K)"
+            target_temp = zone1_actual_temp
+            reason_detail = f"delta_t: {delta_t:.1f}K; t: {target_temp} °C"
         else:
-            suggested_target = zone1_actual_temp + 1.0
+            target_temp = zone1_actual_temp + 1.0
             reason_detail = f"delta_t ({delta_t:.1f}K) <= min ({min_delta_t}K)"
 
         return AutomationAction(
             hp_status="On",
-            target_temp=round(suggested_target, 1),
+            target_temp=round(target_temp, 1),
             reason=f"Heating: {reason_detail}",
         )
