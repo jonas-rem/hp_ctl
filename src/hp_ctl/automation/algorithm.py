@@ -111,12 +111,12 @@ class HeatingAlgorithm:
             elif "DHW" in current_operating_mode and three_way_valve == "Room":
                 return AutomationAction(
                     operating_mode="Heat",
-                    reason="DHW finished (valve returned to Room)",
+                    reason="DHW finished",
                 )
 
         # 3. Demand Check (Bucket Logic)
         if actual_heat_kwh_today >= estimated_demand_kwh:
-            return AutomationAction(hp_status="Off", reason="Daily heat demand met")
+            return AutomationAction(hp_status="Off", reason="Heat demand met")
 
         # 4. Target Temperature Calculation
         ramping_config = self.config.get("ramping", {})
