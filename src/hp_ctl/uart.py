@@ -52,7 +52,9 @@ class UartTransceiver:
             timeout=1.0,
         )
         logger.info("UART connection opened: %s (9600E1)", port)
-        self.thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self.thread = threading.Thread(
+            target=self._listen_loop, daemon=True, name="UART-Listener"
+        )
         self.thread.start()
         logger.debug("Listening thread started")
 
@@ -204,9 +206,8 @@ class UartTransceiver:
                 if message and self.on_message:
                     logger.debug("Invoking callback with message")
                     self.on_message(message)
-                else:
-                    # No message received, sleep to prevent busy-wait
-                    time.sleep(self.poll_interval)
+                # Always sleep to prevent busy-wait
+                time.sleep(self.poll_interval)
             except NotImplementedError:
                 # Expected during development; re-raise to avoid silent failures
                 raise
