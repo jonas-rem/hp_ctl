@@ -150,7 +150,9 @@ class AutomationController:
 
         # Start control loop thread
         self._stop_event.clear()
-        self._control_thread = Thread(target=self._control_loop, daemon=True)
+        self._control_thread = Thread(
+            target=self._control_loop, daemon=True, name="Automation-Control"
+        )
         self._control_thread.start()
 
         # Publish initial automation mode and status

@@ -63,13 +63,16 @@ class WeatherAPIClient:
             return
 
         logger.info(
-            "Starting weather client (lat=%.2f, lon=%.2f, fetches at midnight)",
+            "Starting weather client (lat=%.2f, lon=%.2f, "
+            "fetches at midnight)",
             self.latitude,
             self.longitude,
         )
 
         self._stop_event.clear()
-        self._thread = Thread(target=self._fetch_loop, daemon=True)
+        self._thread = Thread(
+            target=self._fetch_loop, daemon=True, name="Weather-Fetcher"
+        )
         self._thread.start()
 
     def stop(self) -> None:
