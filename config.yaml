@@ -52,7 +52,7 @@ automation:
 
   # Parameters for the control algorithm
   ramping:
-    min_delta_t: 3.0     # Target delta T (outlet - inlet)
+    min_delta_t: 4.0     # Target delta T (outlet - inlet)
 
   storage:
     db_path: /var/lib/hp_ctl/automation.db
