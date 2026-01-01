@@ -19,7 +19,6 @@ class MqttClient:
         port: int = 1883,
         topic_prefix: str = "hp_ctl",
         on_connect: Optional[Callable[[], None]] = None,
-        on_message: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         """Initialize MQTT client.
 
@@ -29,16 +28,12 @@ class MqttClient:
             topic_prefix: Topic prefix for published messages. Defaults to 'hp_ctl'.
             on_connect: Optional callback invoked on each successful connection.
                         Useful for re-publishing discovery configs after reconnection.
-            on_message: Optional callback invoked when a message is received.
-                        Args: (topic, payload)
         """
         self.broker = broker
         self.port = port
         self.topic_prefix = topic_prefix
         self.on_connect_callback = on_connect
-        self._message_listeners: list[Callable[[str, str], None]] = []
-        if on_message:
-            self._message_listeners.append(on_message)
+        self._message_listeners: list[tuple[Callable[[str, str], None], Optional[str]]] = []
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
@@ -88,14 +83,20 @@ class MqttClient:
         logger.debug("Subscribing to: %s", topic)
         self.client.subscribe(topic, qos=1)
 
-    def add_message_listener(self, callback: Callable[[str, str], None]) -> None:
-        """Add a message listener.
+    def add_message_listener(
+        self, callback: Callable[[str, str], None], topic_filter: Optional[str] = None
+    ) -> None:
+        """Add a message listener with optional topic filter.
 
         Args:
             callback: Function to call when a message is received.
                       Args: (topic, payload)
+            topic_filter: Optional MQTT topic pattern to filter messages.
+                         Only messages matching this pattern will be sent to callback.
+                         Supports MQTT wildcards (+ and #).
+                         If None, callback receives all messages.
         """
-        self._message_listeners.append(callback)
+        self._message_listeners.append((callback, topic_filter))
 
     def _on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages."""
@@ -103,11 +104,51 @@ class MqttClient:
         payload = msg.payload.decode()
         logger.debug("Received message: %s = %s", topic, payload)
 
-        for listener in self._message_listeners:
+        for listener, topic_filter in self._message_listeners:
+            # Check if listener should receive this message
+            if topic_filter is not None and not self._topic_matches(topic, topic_filter):
+                continue
+
             try:
                 listener(topic, payload)
             except Exception as e:
                 logger.exception("Error in message listener: %s", e)
+
+    def _topic_matches(self, topic: str, pattern: str) -> bool:
+        """Check if topic matches MQTT pattern with wildcards.
+
+        Args:
+            topic: Actual topic (e.g., "hp_ctl/aquarea_k/set/hp_status")
+            pattern: Pattern with wildcards (e.g., "hp_ctl/+/set/#")
+
+        Returns:
+            True if topic matches pattern
+        """
+        topic_parts = topic.split("/")
+        pattern_parts = pattern.split("/")
+
+        # If pattern doesn't end with #, lengths must match
+        if pattern_parts[-1] != "#" and len(topic_parts) != len(pattern_parts):
+            return False
+
+        for i, pattern_part in enumerate(pattern_parts):
+            # # matches everything remaining
+            if pattern_part == "#":
+                return True
+
+            # Check if we have more pattern parts but topic ended
+            if i >= len(topic_parts):
+                return False
+
+            # + matches any single level
+            if pattern_part == "+":
+                continue
+
+            # Exact match required
+            if pattern_part != topic_parts[i]:
+                return False
+
+        return True
 
     def _on_connect(self, client, userdata, connect_flags, reason_code, properties):
         """Callback for when client connects to broker."""

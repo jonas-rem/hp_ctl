@@ -84,6 +84,11 @@ class Application:
             topic: Command topic (e.g., "hp_ctl/aquarea_k/set/dhw_target_temp")
             payload: Command value (string representation)
         """
+        # Defensive check: Only process /set/ topics
+        if "/set/" not in topic:
+            logger.warning("Ignoring non-command topic: %s", topic)
+            return
+
         # Extract field name from topic
         # Format: hp_ctl/aquarea_k/set/{field_name}
         field_name = topic.rsplit("/", 1)[-1]
@@ -194,8 +199,15 @@ class Application:
                     broker=mqtt_config["broker"],
                     port=mqtt_config["port"],
                     on_connect=self._on_mqtt_connect,
-                    on_message=self._on_mqtt_command,
                 )
+
+                # Register command listener with topic filter for /set/ topics only
+                cmd_topic_filter = f"{self.ha_mapper.get_full_command_topic_prefix()}/#"
+                self.mqtt_client.add_message_listener(
+                    self._on_mqtt_command, topic_filter=cmd_topic_filter
+                )
+                logger.debug("Registered command listener for: %s", cmd_topic_filter)
+
                 self.mqtt_client.connect()
                 logger.info("MQTT client connected")
 

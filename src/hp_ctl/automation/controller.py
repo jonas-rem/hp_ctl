@@ -135,8 +135,12 @@ class AutomationController:
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/automation/mode/set"
         )
 
-        # Register message listener
-        self.mqtt_client.add_message_listener(self._on_message_received)
+        # Register message listener with topic filter
+        topic_filter = f"{self.ha_mapper.topic_prefix}/{self.device_id}/#"
+        self.mqtt_client.add_message_listener(
+            self._on_message_received, topic_filter=topic_filter
+        )
+        logger.debug("Registered automation listener for: %s", topic_filter)
 
         # Publish Home Assistant discovery for automation
         self.publish_discovery()
