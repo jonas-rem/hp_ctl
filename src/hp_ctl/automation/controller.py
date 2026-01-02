@@ -4,6 +4,7 @@
 """Main automation controller orchestrating weather, storage, and energy tracking."""
 
 import logging
+from copy import deepcopy
 from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Any, Callable, Optional
@@ -82,6 +83,7 @@ class AutomationController:
 
         # Track current state
         self.current_snapshot = HeatPumpSnapshot(timestamp=datetime.now())
+        self.last_inserted_snapshot: Optional[HeatPumpSnapshot] = None
         self.last_weather_update: Optional[datetime] = None
         self.last_cleanup: Optional[datetime] = None
         self.last_action = AutomationAction()
@@ -252,8 +254,14 @@ class AutomationController:
             # Update timestamp
             self.current_snapshot.timestamp = datetime.now()
 
-            # Store snapshot to database
-            self.storage.insert_snapshot(self.current_snapshot)
+            # Store snapshot to database only if data has changed
+            if self._snapshot_has_changed():
+                self.storage.insert_snapshot(self.current_snapshot)
+                # Deep copy to avoid reference issues
+                self.last_inserted_snapshot = deepcopy(self.current_snapshot)
+                logger.debug("Snapshot inserted (data changed)")
+            else:
+                logger.debug("Snapshot skipped (no change)")
 
             # Update status (includes today's totals)
             self._publish_status()
@@ -339,6 +347,32 @@ class AutomationController:
         self.last_cleanup = now
 
         logger.info("Cleanup complete: deleted %d old records", deleted)
+
+    def _snapshot_has_changed(self) -> bool:
+        """Check if current snapshot has changed compared to last inserted snapshot.
+
+        Compares only the persisted fields (excludes timestamp and three_way_valve).
+
+        Returns:
+            True if snapshot has changed or is first snapshot, False otherwise.
+        """
+        if self.last_inserted_snapshot is None:
+            return True  # First snapshot - always insert
+
+        last = self.last_inserted_snapshot
+        curr = self.current_snapshot
+
+        # Compare all persisted fields
+        return (
+            curr.outdoor_temp != last.outdoor_temp
+            or curr.heat_power_generation != last.heat_power_generation
+            or curr.heat_power_consumption != last.heat_power_consumption
+            or curr.inlet_water_temp != last.inlet_water_temp
+            or curr.outlet_water_temp != last.outlet_water_temp
+            or curr.zone1_actual_temp != last.zone1_actual_temp
+            or curr.hp_status != last.hp_status
+            or curr.operating_mode != last.operating_mode
+        )
 
     def publish_discovery(self) -> None:
         """Publish Home Assistant discovery configs for automation entities."""

@@ -146,3 +146,90 @@ def test_no_summary_for_empty_day(temp_db):
     date = datetime(2025, 12, 26)
     summary = temp_db.get_daily_summary(date)
     assert summary is None
+
+
+def test_migration_to_version_4():
+    """Test migration from version 3 to version 4 removes unused index."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test_migration.db"
+
+        # Create database at version 3 manually
+        import sqlite3
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Create schema version 3 (includes the index we want to remove)
+        cursor.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS snapshots (
+                timestamp TEXT PRIMARY KEY,
+                outdoor_temp REAL,
+                heat_power_generation REAL,
+                heat_power_consumption REAL,
+                inlet_water_temp REAL,
+                outlet_water_temp REAL,
+                hp_status TEXT,
+                operating_mode TEXT,
+                zone1_actual_temp REAL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date(timestamp));
+
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
+            );
+
+            INSERT OR REPLACE INTO schema_version (version) VALUES (3);
+            """
+        )
+
+        # Insert test data
+        cursor.execute(
+            """
+            INSERT INTO snapshots (timestamp, outdoor_temp, heat_power_generation)
+            VALUES (?, ?, ?)
+            """,
+            ("2025-12-26T12:00:00", 5.5, 3000.0),
+        )
+        conn.commit()
+
+        # Verify index exists
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_snapshots_date'"
+        )
+        assert cursor.fetchone() is not None, "Index should exist before migration"
+
+        # Verify version is 3
+        cursor.execute("SELECT version FROM schema_version")
+        assert cursor.fetchone()[0] == 3
+
+        conn.close()
+
+        # Now open with AutomationStorage which should run migration
+        storage = AutomationStorage(str(db_path))
+
+        # Verify migration ran
+        cursor = storage.conn.cursor()
+
+        # Check version is now 4
+        cursor.execute("SELECT version FROM schema_version")
+        version = cursor.fetchone()[0]
+        assert version == 4, f"Expected version 4, got {version}"
+
+        # Check index was removed
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_snapshots_date'"
+        )
+        assert cursor.fetchone() is None, "Index should be removed after migration"
+
+        # Verify data is intact
+        cursor.execute("SELECT COUNT(*) FROM snapshots")
+        assert cursor.fetchone()[0] == 1, "Data should be preserved"
+
+        cursor.execute("SELECT outdoor_temp, heat_power_generation FROM snapshots")
+        row = cursor.fetchone()
+        assert row[0] == 5.5
+        assert row[1] == 3000.0
+
+        storage.close()

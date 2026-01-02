@@ -13,7 +13,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Migration SQL statements keyed by version
 MIGRATIONS = {
@@ -73,6 +73,13 @@ MIGRATIONS = {
 
         -- Update schema version
         UPDATE schema_version SET version = 3;
+    """,
+    4: """
+        -- Drop unused date index (queries use primary key on timestamp instead)
+        DROP INDEX IF EXISTS idx_snapshots_date;
+
+        -- Update schema version
+        UPDATE schema_version SET version = 4;
     """,
 }
 
