@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
 
-"""SQLite storage for automation data with schema migrations."""
+"""SQLite storage for automation data."""
 
 import logging
 import sqlite3
@@ -13,75 +13,28 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 1
 
-# Migration SQL statements keyed by version
-MIGRATIONS = {
-    1: """
-        CREATE TABLE IF NOT EXISTS snapshots (
-            timestamp TEXT PRIMARY KEY,
-            outdoor_temp REAL,
-            heat_power_generation REAL,
-            heat_power_consumption REAL,
-            compressor_freq INTEGER,
-            inlet_water_temp REAL,
-            outlet_water_temp REAL,
-            hp_status TEXT,
-            operating_mode TEXT
-        );
+# Database schema - applied directly without migrations
+SCHEMA_SQL = """
+    CREATE TABLE IF NOT EXISTS snapshots (
+        timestamp TEXT PRIMARY KEY,
+        outdoor_temp REAL,
+        heat_power_generation REAL,
+        heat_power_consumption REAL,
+        inlet_water_temp REAL,
+        outlet_water_temp REAL,
+        hp_status TEXT,
+        operating_mode TEXT,
+        zone1_actual_temp REAL
+    );
 
-        CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date(timestamp));
+    CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY
+    );
 
-        CREATE TABLE IF NOT EXISTS schema_version (
-            version INTEGER PRIMARY KEY
-        );
-
-        INSERT OR REPLACE INTO schema_version (version) VALUES (1);
-    """,
-    2: """
-        ALTER TABLE snapshots ADD COLUMN zone1_actual_temp REAL;
-        UPDATE schema_version SET version = 2;
-    """,
-    3: """
-        -- Create new table without compressor_freq column
-        CREATE TABLE snapshots_new (
-            timestamp TEXT PRIMARY KEY,
-            outdoor_temp REAL,
-            heat_power_generation REAL,
-            heat_power_consumption REAL,
-            inlet_water_temp REAL,
-            outlet_water_temp REAL,
-            hp_status TEXT,
-            operating_mode TEXT,
-            zone1_actual_temp REAL
-        );
-
-        -- Copy data from old table (excluding compressor_freq)
-        INSERT INTO snapshots_new
-        SELECT timestamp, outdoor_temp, heat_power_generation, heat_power_consumption,
-               inlet_water_temp, outlet_water_temp, hp_status, operating_mode, zone1_actual_temp
-        FROM snapshots;
-
-        -- Drop old table
-        DROP TABLE snapshots;
-
-        -- Rename new table
-        ALTER TABLE snapshots_new RENAME TO snapshots;
-
-        -- Recreate index
-        CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date(timestamp));
-
-        -- Update schema version
-        UPDATE schema_version SET version = 3;
-    """,
-    4: """
-        -- Drop unused date index (queries use primary key on timestamp instead)
-        DROP INDEX IF EXISTS idx_snapshots_date;
-
-        -- Update schema version
-        UPDATE schema_version SET version = 4;
-    """,
-}
+    INSERT OR REPLACE INTO schema_version (version) VALUES (1);
+"""
 
 
 @dataclass
@@ -134,28 +87,26 @@ class AutomationStorage:
         logger.info("Database directory: %s", self.db_path.parent)
 
     def _initialize_schema(self) -> None:
-        """Initialize database schema with migrations."""
+        """Initialize database schema."""
         cursor = self.conn.cursor()
 
-        # Check current schema version
+        # Check if schema is already initialized
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
         )
         if cursor.fetchone() is None:
-            current_version = 0
+            # Create schema from scratch
+            logger.info("Creating database schema (version %d)", SCHEMA_VERSION)
+            cursor.executescript(SCHEMA_SQL)
+            self.conn.commit()
         else:
+            # Schema already exists
             cursor.execute("SELECT version FROM schema_version")
             row = cursor.fetchone()
             current_version = row[0] if row else 0
+            logger.info("Database schema already initialized (version %d)", current_version)
 
-        # Apply migrations
-        for version in range(current_version + 1, SCHEMA_VERSION + 1):
-            if version in MIGRATIONS:
-                logger.info("Applying migration to version %d", version)
-                cursor.executescript(MIGRATIONS[version])
-                self.conn.commit()
-
-        logger.info("Database schema initialized (version %d)", SCHEMA_VERSION)
+        logger.info("Database ready (version %d)", SCHEMA_VERSION)
 
     def insert_snapshot(self, snapshot: HeatPumpSnapshot) -> None:
         """Insert a heat pump snapshot into the database.

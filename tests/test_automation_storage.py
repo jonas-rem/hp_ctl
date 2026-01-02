@@ -35,7 +35,7 @@ def test_database_initialization(temp_db):
     # Check schema version
     cursor.execute("SELECT version FROM schema_version")
     version = cursor.fetchone()[0]
-    assert version == 3
+    assert version == 1
 
 
 def test_insert_and_retrieve_snapshot(temp_db):
@@ -148,88 +148,32 @@ def test_no_summary_for_empty_day(temp_db):
     assert summary is None
 
 
-def test_migration_to_version_4():
-    """Test migration from version 3 to version 4 removes unused index."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test_migration.db"
+def test_schema_has_all_required_columns(temp_db):
+    """Test schema includes all required columns without unnecessary indexes."""
+    cursor = temp_db.conn.cursor()
 
-        # Create database at version 3 manually
-        import sqlite3
+    # Check snapshots table has all expected columns
+    cursor.execute("PRAGMA table_info(snapshots)")
+    columns = {row[1] for row in cursor.fetchall()}
 
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
+    expected_columns = {
+        "timestamp",
+        "outdoor_temp",
+        "heat_power_generation",
+        "heat_power_consumption",
+        "inlet_water_temp",
+        "outlet_water_temp",
+        "hp_status",
+        "operating_mode",
+        "zone1_actual_temp",
+    }
 
-        # Create schema version 3 (includes the index we want to remove)
-        cursor.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS snapshots (
-                timestamp TEXT PRIMARY KEY,
-                outdoor_temp REAL,
-                heat_power_generation REAL,
-                heat_power_consumption REAL,
-                inlet_water_temp REAL,
-                outlet_water_temp REAL,
-                hp_status TEXT,
-                operating_mode TEXT,
-                zone1_actual_temp REAL
-            );
+    assert columns == expected_columns, f"Expected {expected_columns}, got {columns}"
 
-            CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date(timestamp));
+    # Verify no unnecessary indexes exist (only implicit primary key index)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='snapshots'")
+    indexes = [row[0] for row in cursor.fetchall()]
 
-            CREATE TABLE IF NOT EXISTS schema_version (
-                version INTEGER PRIMARY KEY
-            );
-
-            INSERT OR REPLACE INTO schema_version (version) VALUES (3);
-            """
-        )
-
-        # Insert test data
-        cursor.execute(
-            """
-            INSERT INTO snapshots (timestamp, outdoor_temp, heat_power_generation)
-            VALUES (?, ?, ?)
-            """,
-            ("2025-12-26T12:00:00", 5.5, 3000.0),
-        )
-        conn.commit()
-
-        # Verify index exists
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_snapshots_date'"
-        )
-        assert cursor.fetchone() is not None, "Index should exist before migration"
-
-        # Verify version is 3
-        cursor.execute("SELECT version FROM schema_version")
-        assert cursor.fetchone()[0] == 3
-
-        conn.close()
-
-        # Now open with AutomationStorage which should run migration
-        storage = AutomationStorage(str(db_path))
-
-        # Verify migration ran
-        cursor = storage.conn.cursor()
-
-        # Check version is now 4
-        cursor.execute("SELECT version FROM schema_version")
-        version = cursor.fetchone()[0]
-        assert version == 4, f"Expected version 4, got {version}"
-
-        # Check index was removed
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_snapshots_date'"
-        )
-        assert cursor.fetchone() is None, "Index should be removed after migration"
-
-        # Verify data is intact
-        cursor.execute("SELECT COUNT(*) FROM snapshots")
-        assert cursor.fetchone()[0] == 1, "Data should be preserved"
-
-        cursor.execute("SELECT outdoor_temp, heat_power_generation FROM snapshots")
-        row = cursor.fetchone()
-        assert row[0] == 5.5
-        assert row[1] == 3000.0
-
-        storage.close()
+    # SQLite creates automatic index for primary key, but no other indexes should exist
+    for idx in indexes:
+        assert "autoindex" in idx.lower() or "pk" in idx.lower(), f"Unexpected index: {idx}"
