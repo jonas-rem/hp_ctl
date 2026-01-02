@@ -115,7 +115,6 @@ class AutomationController:
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/outdoor_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/heat_power_generation",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/heat_power_consumption",
-            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/compressor_freq",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/inlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/outlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/zone1_actual_temp",
@@ -228,8 +227,6 @@ class AutomationController:
                 self.current_snapshot.heat_power_generation = float(payload)
             elif field_name == "heat_power_consumption":
                 self.current_snapshot.heat_power_consumption = float(payload)
-            elif field_name == "compressor_freq":
-                self.current_snapshot.compressor_freq = int(float(payload))
             elif field_name == "inlet_water_temp":
                 self.current_snapshot.inlet_water_temp = float(payload)
             elif field_name == "outlet_water_temp":
@@ -553,7 +550,6 @@ class AutomationController:
             "avg_cop": round(summary.avg_cop, 2),
             "avg_outdoor_temp": round(summary.avg_outdoor_temp, 1),
             "runtime_hours": round(summary.runtime_hours, 2),
-            "max_compressor_freq": summary.max_compressor_freq,
         }
 
         self.mqtt_client.publish(summary_topic, summary_payload)

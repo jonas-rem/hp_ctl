@@ -13,7 +13,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Migration SQL statements keyed by version
 MIGRATIONS = {
@@ -42,6 +42,38 @@ MIGRATIONS = {
         ALTER TABLE snapshots ADD COLUMN zone1_actual_temp REAL;
         UPDATE schema_version SET version = 2;
     """,
+    3: """
+        -- Create new table without compressor_freq column
+        CREATE TABLE snapshots_new (
+            timestamp TEXT PRIMARY KEY,
+            outdoor_temp REAL,
+            heat_power_generation REAL,
+            heat_power_consumption REAL,
+            inlet_water_temp REAL,
+            outlet_water_temp REAL,
+            hp_status TEXT,
+            operating_mode TEXT,
+            zone1_actual_temp REAL
+        );
+
+        -- Copy data from old table (excluding compressor_freq)
+        INSERT INTO snapshots_new
+        SELECT timestamp, outdoor_temp, heat_power_generation, heat_power_consumption,
+               inlet_water_temp, outlet_water_temp, hp_status, operating_mode, zone1_actual_temp
+        FROM snapshots;
+
+        -- Drop old table
+        DROP TABLE snapshots;
+
+        -- Rename new table
+        ALTER TABLE snapshots_new RENAME TO snapshots;
+
+        -- Recreate index
+        CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date(timestamp));
+
+        -- Update schema version
+        UPDATE schema_version SET version = 3;
+    """,
 }
 
 
@@ -53,7 +85,6 @@ class HeatPumpSnapshot:
     outdoor_temp: Optional[float] = None
     heat_power_generation: Optional[float] = None  # Watts
     heat_power_consumption: Optional[float] = None  # Watts
-    compressor_freq: Optional[int] = None
     inlet_water_temp: Optional[float] = None
     outlet_water_temp: Optional[float] = None
     zone1_actual_temp: Optional[float] = None
@@ -73,7 +104,6 @@ class DailySummary:
     avg_cop: float  # Average coefficient of performance
     avg_outdoor_temp: float
     runtime_hours: float
-    max_compressor_freq: int
 
 
 class AutomationStorage:
@@ -131,16 +161,15 @@ class AutomationStorage:
             """
             INSERT OR REPLACE INTO snapshots (
                 timestamp, outdoor_temp, heat_power_generation, heat_power_consumption,
-                compressor_freq, inlet_water_temp, outlet_water_temp,
+                inlet_water_temp, outlet_water_temp,
                 zone1_actual_temp, hp_status, operating_mode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot.timestamp.isoformat(),
                 snapshot.outdoor_temp,
                 snapshot.heat_power_generation,
                 snapshot.heat_power_consumption,
-                snapshot.compressor_freq,
                 snapshot.inlet_water_temp,
                 snapshot.outlet_water_temp,
                 snapshot.zone1_actual_temp,
@@ -179,7 +208,6 @@ class AutomationStorage:
                     outdoor_temp=row["outdoor_temp"],
                     heat_power_generation=row["heat_power_generation"],
                     heat_power_consumption=row["heat_power_consumption"],
-                    compressor_freq=row["compressor_freq"],
                     inlet_water_temp=row["inlet_water_temp"],
                     outlet_water_temp=row["outlet_water_temp"],
                     zone1_actual_temp=row["zone1_actual_temp"],
@@ -244,10 +272,6 @@ class AutomationStorage:
         outdoor_temps = [s.outdoor_temp for s in snapshots if s.outdoor_temp is not None]
         avg_outdoor_temp = sum(outdoor_temps) / len(outdoor_temps) if outdoor_temps else 0.0
 
-        # Find max compressor frequency
-        compressor_freqs = [s.compressor_freq for s in snapshots if s.compressor_freq is not None]
-        max_compressor_freq = max(compressor_freqs) if compressor_freqs else 0
-
         return DailySummary(
             date=date.date().isoformat(),
             total_heat_kwh=total_heat_kwh,
@@ -255,7 +279,6 @@ class AutomationStorage:
             avg_cop=avg_cop,
             avg_outdoor_temp=avg_outdoor_temp,
             runtime_hours=runtime_seconds / 3600,
-            max_compressor_freq=max_compressor_freq,
         )
 
     def cleanup_old_data(self, retention_days: int) -> int:

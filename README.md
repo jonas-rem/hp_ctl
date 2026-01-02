@@ -316,7 +316,7 @@ All topics are prefixed with `hp_ctl/{device_id}/`. Use
 
 1. **Data Collection:** Every UART message from the heat pump is
    stored in SQLite, including heat power generation, electrical
-   consumption, compressor frequency, and temperatures.
+   consumption, and temperatures.
 
 2. **Weather Updates:** 24-hour average outdoor temperature from the
    previous day is fetched on startup and then automatically at

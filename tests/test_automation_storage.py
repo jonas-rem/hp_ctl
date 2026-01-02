@@ -35,7 +35,7 @@ def test_database_initialization(temp_db):
     # Check schema version
     cursor.execute("SELECT version FROM schema_version")
     version = cursor.fetchone()[0]
-    assert version == 2
+    assert version == 3
 
 
 def test_insert_and_retrieve_snapshot(temp_db):
@@ -47,7 +47,6 @@ def test_insert_and_retrieve_snapshot(temp_db):
         outdoor_temp=5.5,
         heat_power_generation=3000.0,
         heat_power_consumption=1000.0,
-        compressor_freq=45,
         inlet_water_temp=35.0,
         outlet_water_temp=40.0,
         zone1_actual_temp=38.0,
@@ -68,7 +67,6 @@ def test_insert_and_retrieve_snapshot(temp_db):
     assert retrieved.timestamp == timestamp
     assert retrieved.outdoor_temp == 5.5
     assert retrieved.heat_power_generation == 3000.0
-    assert retrieved.compressor_freq == 45
     assert retrieved.zone1_actual_temp == 38.0
 
 
@@ -87,7 +85,6 @@ def test_daily_summary_calculation(temp_db):
             outdoor_temp=5.0,
             heat_power_generation=3000.0,  # W
             heat_power_consumption=1000.0,  # W
-            compressor_freq=45,
             hp_status="On",
         )
         temp_db.insert_snapshot(snapshot)
@@ -111,9 +108,6 @@ def test_daily_summary_calculation(temp_db):
 
     # Check runtime (approximately 1 hour)
     assert 0.9 < summary.runtime_hours < 1.1
-
-    # Check max compressor freq
-    assert summary.max_compressor_freq == 45
 
 
 def test_cleanup_old_data(temp_db):
