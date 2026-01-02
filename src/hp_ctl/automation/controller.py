@@ -88,6 +88,10 @@ class AutomationController:
         self.last_cleanup: Optional[datetime] = None
         self.last_action = AutomationAction()
 
+        # Cache for daily summary to avoid expensive recalculation on every MQTT message
+        self._cached_daily_summary: Optional[Any] = None
+        self._cached_summary_date: Optional[str] = None
+
         # Control loop thread
         self._control_thread: Optional[Thread] = None
         self._stop_event = Event()
@@ -259,6 +263,8 @@ class AutomationController:
                 self.storage.insert_snapshot(self.current_snapshot)
                 # Deep copy to avoid reference issues
                 self.last_inserted_snapshot = deepcopy(self.current_snapshot)
+                # Invalidate daily summary cache since we inserted new data
+                self._cached_daily_summary = None
                 logger.debug("Snapshot inserted (data changed)")
             else:
                 logger.debug("Snapshot skipped (no change)")
@@ -374,6 +380,32 @@ class AutomationController:
             or curr.operating_mode != last.operating_mode
         )
 
+    def _get_cached_daily_summary(self) -> Optional[Any]:
+        """Get today's daily summary with caching to avoid expensive recalculation.
+
+        The summary is cached and only recalculated when:
+        - Cache is empty
+        - Date has changed (new day)
+        - New data was inserted to database
+
+        Returns:
+            DailySummary instance or None if no data available.
+        """
+        today = datetime.now()
+        today_str = today.date().isoformat()
+
+        # Check if we need to recalculate
+        if (
+            self._cached_daily_summary is None
+            or self._cached_summary_date != today_str
+        ):
+            # Recalculate and cache
+            self._cached_daily_summary = self.storage.get_daily_summary(today)
+            self._cached_summary_date = today_str
+            logger.debug("Daily summary recalculated and cached")
+
+        return self._cached_daily_summary
+
     def publish_discovery(self) -> None:
         """Publish Home Assistant discovery configs for automation entities."""
         logger.info("Publishing Home Assistant discovery configs for automation")
@@ -398,7 +430,7 @@ class AutomationController:
         """Execute the heating algorithm and send commands."""
         # 1. Gather inputs
         now = datetime.now()
-        summary = self.storage.get_daily_summary(now)
+        summary = self._get_cached_daily_summary()
         actual_heat = summary.total_heat_kwh if summary else 0.0
 
         last_weather = self.weather_client.get_last_data()
@@ -506,9 +538,8 @@ class AutomationController:
 
     def _publish_status(self) -> None:
         """Publish automation status to MQTT."""
-        # Get today's daily summary
-        today = datetime.now()
-        daily_summary = self.storage.get_daily_summary(today)
+        # Get today's daily summary (cached to avoid expensive recalculation)
+        daily_summary = self._get_cached_daily_summary()
 
         # Get yesterday's 24h average outdoor temp from weather data
         outdoor_temp_avg_24h = None
