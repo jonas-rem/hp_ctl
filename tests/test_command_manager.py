@@ -26,6 +26,43 @@ class TestCommandManager:
         # All parameter bytes should be 0x00 for query
         assert all(b == 0x00 for b in cm.query_command[4:])
 
+    def test_extra_query_command_format(self):
+        """Verify extra query command has correct format (0x71 header, 0x21 type)."""
+        uart_mock = Mock()
+        cm = CommandManager(uart_mock)
+
+        # Check extra query command format
+        assert len(cm.extra_query_command) == 110
+        assert cm.extra_query_command[0] == 0x71  # Query header
+        assert cm.extra_query_command[1] == 0x6C  # Length - 2 (108)
+        assert cm.extra_query_command[2] == 0x01  # Source
+        assert cm.extra_query_command[3] == 0x21  # Extra packet type
+        # All parameter bytes should be 0x00 for query
+        assert all(b == 0x00 for b in cm.extra_query_command[4:])
+
+    def test_extra_query_sequencing(self):
+        """Verify extra query is sent after standard query response."""
+        uart_mock = Mock()
+        cm = CommandManager(uart_mock)
+
+        # Start manager
+        cm.start()
+        time.sleep(0.1)
+
+        # Standard query should be sent immediately
+        assert uart_mock.send.call_count == 1
+        assert uart_mock.send.call_args[0][0][3] == 0x10
+
+        # Simulate response
+        cm.on_response_received()
+        time.sleep(0.6)
+
+        # Extra query should be sent now
+        assert uart_mock.send.call_count == 2
+        assert uart_mock.send.call_args[0][0][3] == 0x21
+
+        cm.stop()
+
     def test_first_query_sent_immediately(self):
         """Verify first query is sent immediately (no startup delay)."""
         uart_mock = Mock()
@@ -60,20 +97,23 @@ class TestCommandManager:
             # First query at t=0
             assert uart_mock.send.call_count >= 1
 
-            # Simulate response received to unlock state
+            # Simulate response received to unlock state for extra query
             cm.on_response_received()
+            time.sleep(0.6)
+            assert uart_mock.send.call_count == 2
+            cm.on_response_received()  # Unlock after extra query
 
             # Advance time to 29s (not enough)
             mock_time.time.return_value = 29.0
             time.sleep(0.6)  # Wait for loop cycle
             first_count = uart_mock.send.call_count
 
-            # Advance time to 31s (should trigger second query)
+            # Advance time to 31s (should trigger second query sequence)
             mock_time.time.return_value = 31.0
             time.sleep(0.6)  # Wait for loop cycle
             second_count = uart_mock.send.call_count
 
-            # Should have sent second query
+            # Should have sent second sequence start
             assert second_count > first_count
 
             cm.stop()

@@ -44,6 +44,7 @@ class CommandManager:
         """
         self.uart = uart_transceiver
         self.query_command = self._build_query_command()
+        self.extra_query_command = self._build_extra_query_command()
 
         # Command queue (FIFO for setting commands)
         self.command_queue: list[bytes] = []
@@ -51,6 +52,7 @@ class CommandManager:
 
         # State tracking
         self.waiting_for_response = False
+        self.pending_extra_query = False
         self.last_send_time: Optional[float] = None
         self.last_query_time: Optional[float] = None
         self._state_lock = threading.Lock()
@@ -85,6 +87,24 @@ class CommandManager:
         buffer[2] = 0x01  # Source
         buffer[3] = 0x10  # Packet type
         # Rest is already 0x00 (query has no parameter changes)
+        return bytes(buffer)
+
+    def _build_extra_query_command(self) -> bytes:
+        """Build the Panasonic extra query command (0x71 header, 0x21 type).
+
+        Extra query format:
+        - Byte 0: 0x71 (query header)
+        - Byte 1: 0x6c (length - 2 = 108)
+        - Byte 2: 0x01 (source)
+        - Byte 3: 0x21 (packet type for power stats)
+        - Bytes 4-109: 0x00
+        - Byte 110: checksum (calculated and added by UART layer)
+
+        Returns:
+            110-byte query command (without checksum).
+        """
+        buffer = bytearray(self.query_command)
+        buffer[3] = 0x21  # Packet type 0x21 (Extra)
         return bytes(buffer)
 
     def queue_command(self, encoded_bytes: bytes) -> None:
@@ -211,8 +231,21 @@ class CommandManager:
                         self._send_command(command_to_send, is_query=False)
                         continue  # Skip to next iteration
 
-                    # Priority 2: Send periodic query if interval elapsed
+                    # Priority 2: Send extra query if pending (requested after standard query)
+                    send_extra = False
+                    with self._state_lock:
+                        if self.pending_extra_query:
+                            send_extra = True
+                            self.pending_extra_query = False
+
+                    if send_extra:
+                        self._send_command(self.extra_query_command, is_query=True)
+                        continue
+
+                    # Priority 3: Send periodic query if interval elapsed
                     if self._should_send_query():
+                        with self._state_lock:
+                            self.pending_extra_query = True
                         self._send_command(self.query_command, is_query=True)
 
             except Exception as e:
