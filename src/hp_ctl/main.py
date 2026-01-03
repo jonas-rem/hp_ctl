@@ -8,6 +8,7 @@ import time
 from typing import Any, Optional
 
 from hp_ctl.automation import AutomationController
+from hp_ctl.command_manager import CommandManager
 from hp_ctl.config import load_config
 from hp_ctl.homeassistant import HomeAssistantMapper
 from hp_ctl.mqtt import MqttClient
@@ -34,6 +35,7 @@ class Application:
         self.protocol = HeatPumpProtocol(user_limits=self.config.get("limits"))
         self.mqtt_client: Optional[MqttClient] = None
         self.uart_transceiver: Optional[UartTransceiver] = None
+        self.command_manager: Optional[CommandManager] = None
         self.ha_mapper = HomeAssistantMapper()
         self.discovery_published = False
         self.automation_controller: Optional[AutomationController] = None
@@ -84,6 +86,14 @@ class Application:
             topic: Command topic (e.g., "hp_ctl/aquarea_k/set/dhw_target_temp")
             payload: Command value (string representation)
         """
+        # CHECK: Is automation enabled? If yes, ignore user MQTT commands
+        if self.automation_controller and self.automation_controller.automatic_mode_enabled:
+            logger.warning(
+                "Ignoring MQTT command for %s (automation mode active - disable automation to send manual commands)",
+                topic,
+            )
+            return
+
         # Defensive check: Only process /set/ topics
         if "/set/" not in topic:
             logger.warning("Ignoring non-command topic: %s", topic)
@@ -111,12 +121,12 @@ class Application:
             message = Message(packet_type=0x10, fields={field_name: value})
             encoded = self.protocol.standard_codec.encode(message)
 
-            # Send via UART
-            if self.uart_transceiver:
-                self.uart_transceiver.send(encoded)
-                logger.info("Sent command: %s = %s", field_name, value)
+            # Queue via command manager (sequential locking)
+            if self.command_manager:
+                self.command_manager.queue_command(encoded)
+                logger.info("Queued user command: %s = %s", field_name, value)
             else:
-                logger.warning("UART not ready, cannot send command")
+                logger.warning("Command manager not ready, cannot send command")
 
         except ValueError as e:
             logger.warning("Invalid command %s=%s: %s", field_name, payload, e)
@@ -137,12 +147,12 @@ class Application:
             message = Message(packet_type=0x10, fields={field_name: value})
             encoded = self.protocol.standard_codec.encode(message)
 
-            # Send via UART
-            if self.uart_transceiver:
-                self.uart_transceiver.send(encoded)
-                logger.info("Sent automation command: %s = %s", field_name, value)
+            # Queue via command manager (sequential locking)
+            if self.command_manager:
+                self.command_manager.queue_command(encoded)
+                logger.info("Queued automation command: %s = %s", field_name, value)
             else:
-                logger.warning("UART not ready, cannot send automation command")
+                logger.warning("Command manager not ready, cannot send automation command")
 
         except Exception as e:
             logger.exception("Failed to send automation command %s=%s: %s", field_name, value, e)
@@ -167,6 +177,10 @@ class Application:
         Args:
             raw_msg: Raw validated message bytes from UART.
         """
+        # Notify command manager about response (unlocks sequential locking)
+        if self.command_manager:
+            self.command_manager.on_response_received()
+
         try:
             # Decode message
             message = self.protocol.decode(raw_msg)
@@ -221,6 +235,11 @@ class Application:
                 )
                 logger.info("UART receiver started on %s", uart_config["port"])
 
+                # Initialize Command Manager (hardcoded, always active)
+                self.command_manager = CommandManager(uart_transceiver=self.uart_transceiver)
+                self.command_manager.start()
+                logger.info("Command manager started (30s interval, sequential locking)")
+
                 # Initialize automation controller (always, for data collection)
                 if "automation" in self.config:
                     logger.info("Initializing automation controller")
@@ -263,6 +282,8 @@ class Application:
     def shutdown(self) -> None:
         """Shutdown application and cleanup resources."""
         logger.info("Shutting down application")
+        if self.command_manager:
+            self.command_manager.stop()
         if self.automation_controller:
             self.automation_controller.stop()
         if self.uart_transceiver:
