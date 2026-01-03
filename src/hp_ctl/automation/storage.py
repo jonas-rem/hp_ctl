@@ -94,7 +94,18 @@ class AutomationStorage:
         """Initialize database schema."""
         cursor = self.conn.cursor()
 
-        # 1. Ensure schema_version table exists
+        # 1. Check if this is a fresh database (no tables exist)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='snapshots'")
+        is_fresh_db = cursor.fetchone() is None
+
+        if is_fresh_db:
+            # Fresh database - create schema directly at version 2
+            logger.info("Creating snapshots table (version %d)", SCHEMA_VERSION)
+            cursor.executescript(SCHEMA_SQL)
+            self.conn.commit()
+            return
+
+        # 2. Existing database - ensure schema_version table exists
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
         )
@@ -102,14 +113,6 @@ class AutomationStorage:
             cursor.execute("CREATE TABLE schema_version (version INTEGER PRIMARY KEY)")
             cursor.execute("INSERT INTO schema_version (version) VALUES (0)")
             self.conn.commit()
-
-        # 2. Ensure snapshots table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='snapshots'")
-        if cursor.fetchone() is None:
-            logger.info("Creating snapshots table (version %d)", SCHEMA_VERSION)
-            cursor.executescript(SCHEMA_SQL)
-            self.conn.commit()
-            return
 
         # 3. Robustly check for and add missing columns
         cursor.execute("PRAGMA table_info(snapshots)")
