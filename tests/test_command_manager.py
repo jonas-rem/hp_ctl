@@ -138,13 +138,16 @@ class TestCommandManager:
 
             cm.stop()
 
-    def test_sequential_locking_settings(self):
-        """Verify setting commands also wait for response."""
+    def test_settings_no_lock(self):
+        """Verify setting commands do NOT wait for response (fire-and-forget)."""
         uart_mock = Mock()
         cm = CommandManager(uart_mock)
 
         setting_command_1 = b"\xf1" + b"\x01" * 109
         setting_command_2 = b"\xf1" + b"\x02" * 109
+
+        # Set last_query_time to now to prevent immediate query during test
+        cm.last_query_time = time.time()
 
         cm.queue_command(setting_command_1)
         cm.queue_command(setting_command_2)
@@ -153,20 +156,14 @@ class TestCommandManager:
         time.sleep(0.6)
 
         # First command sent
-        assert uart_mock.send.call_count == 1
+        assert uart_mock.send.call_count >= 1
         assert uart_mock.send.call_args_list[0][0][0] == setting_command_1
-        assert cm.waiting_for_response is True
+        # Should NOT be waiting for response
+        assert cm.waiting_for_response is False
 
-        # Wait a bit more, second command should NOT be sent yet
+        # Second command should be sent almost immediately in next loop iteration
         time.sleep(0.6)
-        assert uart_mock.send.call_count == 1
-
-        # Simulate response
-        cm.on_response_received()
-        time.sleep(0.6)
-
-        # Now second command should be sent
-        assert uart_mock.send.call_count == 2
+        assert uart_mock.send.call_count >= 2
         assert uart_mock.send.call_args_list[1][0][0] == setting_command_2
 
         cm.stop()

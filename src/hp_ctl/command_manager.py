@@ -146,9 +146,12 @@ class CommandManager:
                 self.last_send_time = time.time()
                 if is_query:
                     self.last_query_time = self.last_send_time
-                self.waiting_for_response = True
+                    self.waiting_for_response = True
+                else:
+                    self.waiting_for_response = False
             cmd_type = "Query (0x71)" if is_query else "Setting (0xf1)"
-            logger.debug("%s sent, waiting for response", cmd_type)
+            wait_str = "waiting for response" if is_query else "no response expected"
+            logger.debug("%s sent, %s", cmd_type, wait_str)
         except Exception as e:
             logger.error("Failed to send command: %s", e)
             with self._state_lock:
