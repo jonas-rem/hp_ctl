@@ -94,33 +94,58 @@ class AutomationStorage:
         """Initialize database schema."""
         cursor = self.conn.cursor()
 
-        # Check if schema is already initialized
+        # Check if schema_version table exists
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
         )
-        if cursor.fetchone() is None:
-            # Create schema from scratch
-            logger.info("Creating database schema (version %d)", SCHEMA_VERSION)
-            cursor.executescript(SCHEMA_SQL)
-            self.conn.commit()
+        version_table_exists = cursor.fetchone() is not None
+
+        if not version_table_exists:
+            # Check if snapshots table already exists (older version without version table)
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='snapshots'")
+            snapshots_exists = cursor.fetchone() is not None
+
+            if not snapshots_exists:
+                # Fresh install
+                logger.info("Creating database schema (version %d)", SCHEMA_VERSION)
+                cursor.executescript(SCHEMA_SQL)
+                self.conn.commit()
+                return
+            else:
+                # Old version without schema_version table
+                logger.info("Existing snapshots table found without version table, initializing...")
+                cursor.execute("CREATE TABLE schema_version (version INTEGER PRIMARY KEY)")
+                cursor.execute("INSERT INTO schema_version (version) VALUES (1)")
+                self.conn.commit()
+                current_version = 1
         else:
-            # Schema already exists
+            # Schema version table exists, get version
             cursor.execute("SELECT version FROM schema_version")
             row = cursor.fetchone()
             current_version = row[0] if row else 0
-            logger.info("Database schema already initialized (version %d)", current_version)
 
-            if current_version < 2:
-                logger.info("Migrating database from version %d to 2", current_version)
-                try:
+        logger.info("Database schema version: %d", current_version)
+
+        # Apply migrations
+        if current_version < 2:
+            logger.info("Migrating database from version %d to 2", current_version)
+            try:
+                # Check if columns already exist before adding them
+                cursor.execute("PRAGMA table_info(snapshots)")
+                columns = [col[1] for col in cursor.fetchall()]
+
+                if "dhw_target_temp" not in columns:
                     cursor.execute("ALTER TABLE snapshots ADD COLUMN dhw_target_temp REAL")
+                    logger.info("Added column dhw_target_temp")
+                if "zone1_heat_target_temp" not in columns:
                     cursor.execute("ALTER TABLE snapshots ADD COLUMN zone1_heat_target_temp REAL")
-                    cursor.execute("UPDATE schema_version SET version = 2")
-                    self.conn.commit()
-                    logger.info("Migration to version 2 successful")
-                except sqlite3.OperationalError as e:
-                    # Column might already exist if migration was partially successful
-                    logger.warning("Migration warning: %s", e)
+                    logger.info("Added column zone1_heat_target_temp")
+
+                cursor.execute("UPDATE schema_version SET version = 2")
+                self.conn.commit()
+                logger.info("Migration to version 2 successful")
+            except sqlite3.OperationalError as e:
+                logger.warning("Migration error: %s", e)
 
         logger.info("Database ready (version %d)", SCHEMA_VERSION)
 
