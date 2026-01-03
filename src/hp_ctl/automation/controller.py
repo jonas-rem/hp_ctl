@@ -101,12 +101,12 @@ class AutomationController:
         self.last_error: Optional[str] = None
 
         # EEPROM protection: track command history per parameter
-        # Limits to 10 changes per hour per parameter to prevent EEPROM wear
+        # Limits write frequency to prevent EEPROM wear
         self.change_history: dict[str, list[datetime]] = {}
-        self.max_changes_per_hour = 10  # Hardcoded limit
+        self.max_changes_per_hour = 15
 
         logger.info(
-            "Automation controller initialized (automatic mode: %s, EEPROM limit: %d/hour)",
+            "Automation ctlr initialized (automatic mode: %s, EEPROM limit: %d/hour)",
             "enabled" if self.automatic_mode_enabled else "disabled",
             self.max_changes_per_hour,
         )

@@ -271,42 +271,41 @@ class TestSnapshotChangeDetection:
 
 
 class TestEEPROMProtection:
-    """Test suite for EEPROM protection (10 changes per hour limit)."""
+    """Test suite for EEPROM protection (15 changes per hour limit)."""
 
     def test_can_send_command_first_time(self, controller):
         """Verify first command is always allowed."""
         assert controller._can_send_command("hp_status") is True
         assert controller._can_send_command("operating_mode") is True
-
     def test_can_send_command_under_limit(self, controller):
-        """Verify commands allowed when under 10/hour limit."""
+        """Verify commands allowed when under 15/hour limit."""
 
-        # Send 9 commands
-        for i in range(9):
+        # Send 14 commands
+        for i in range(14):
             assert controller._can_send_command("hp_status") is True
             controller._record_command_sent("hp_status")
 
-        # 10th should still be allowed
+        # 15th should still be allowed
         assert controller._can_send_command("hp_status") is True
 
-    def test_limit_enforcement_10_per_hour(self, controller):
-        """Verify 11th command is rejected (10/hour limit)."""
+    def test_limit_enforcement_15_per_hour(self, controller):
+        """Verify 16th command is rejected (15/hour limit)."""
 
-        # Send 10 commands
-        for i in range(10):
+        # Send 15 commands (limit)
+        for i in range(15):
             assert controller._can_send_command("hp_status") is True
             controller._record_command_sent("hp_status")
 
-        # 11th should be rejected
+        # 16th should be rejected
         assert controller._can_send_command("hp_status") is False
 
     def test_rolling_window_expiry(self, controller):
         """Verify old changes expire after 1 hour (rolling window)."""
         from datetime import datetime, timedelta
 
-        # Record 10 changes at t=0
+        # Record 15 changes at t=0
         base_time = datetime.now()
-        for i in range(10):
+        for i in range(15):
             controller.change_history.setdefault("hp_status", []).append(base_time)
 
         # Verify limit reached
@@ -318,18 +317,20 @@ class TestEEPROMProtection:
             mock_datetime.now.return_value = future_time
 
             # Should be allowed now (old changes expired)
+            # Should be allowed now (old changes expired)
             assert controller._can_send_command("hp_status") is True
 
     def test_per_parameter_tracking(self, controller):
         """Verify limits tracked independently per parameter."""
-        # Max out hp_status
-        for i in range(10):
+        # Max out hp_status (15 changes)
+        for i in range(15):
             controller._record_command_sent("hp_status")
 
         # hp_status should be blocked
         assert controller._can_send_command("hp_status") is False
 
         # But operating_mode should still work (independent tracking)
+        assert controller._can_send_command("operating_mode") is True
         assert controller._can_send_command("operating_mode") is True
 
     def test_record_command_sent(self, controller):
@@ -354,19 +355,18 @@ class TestEEPROMProtection:
         old_time = base_time - timedelta(minutes=70)
         controller.change_history["hp_status"] = [old_time] * 5
 
-        # Add 5 recent entries (10 minutes ago - should NOT expire)
+        # Add 10 recent entries (10 minutes ago - should NOT expire)
         recent_time = base_time - timedelta(minutes=10)
-        controller.change_history["hp_status"].extend([recent_time] * 5)
+        controller.change_history["hp_status"].extend([recent_time] * 10)
 
         # Mock current time
         with patch("hp_ctl.automation.controller.datetime") as mock_datetime:
             mock_datetime.now.return_value = base_time
 
-            # Should be able to send (only 5 recent entries remain after expiry)
+            # Should be able to send (only 10 recent entries remain after expiry, limit is 15)
             assert controller._can_send_command("hp_status") is True
 
-            # After checking, old entries should be removed
-            assert len(controller.change_history["hp_status"]) == 5
+            assert len(controller.change_history["hp_status"]) == 10
 
 
 class TestCommandSuppression:
