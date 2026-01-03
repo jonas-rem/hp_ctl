@@ -90,12 +90,12 @@ class HeatingAlgorithm:
             start_time_str = dhw_config["start_time"]
             now_time = current_time.time()
 
-            # Trigger DHW within a 1-hour window starting at start_time.
+            # Trigger DHW within a 10-minute window starting at start_time.
             # Once DHW completes (valve returns to Room), mode reverts to Heat.
             # Re-triggering within the window is harmless as water is already hot.
             trigger_start = datetime.strptime(start_time_str, "%H:%M").time()
             trigger_end = (
-                datetime.combine(datetime.min, trigger_start) + timedelta(hours=1)
+                datetime.combine(datetime.min, trigger_start) + timedelta(minutes=10)
             ).time()
 
             if trigger_start <= now_time <= trigger_end:
