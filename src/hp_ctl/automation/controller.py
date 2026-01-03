@@ -256,8 +256,9 @@ class AutomationController:
             elif field_name == "operating_mode":
                 self.current_snapshot.operating_mode = payload
             elif field_name == "zone1_heat_target_temp":
-                # We don't store this in snapshot currently but good for monitoring
-                pass
+                self.current_snapshot.zone1_heat_target_temp = float(payload)
+            elif field_name == "dhw_target_temp":
+                self.current_snapshot.dhw_target_temp = float(payload)
 
             # Update timestamp
             self.current_snapshot.timestamp = datetime.now()
@@ -380,6 +381,8 @@ class AutomationController:
             or curr.inlet_water_temp != last.inlet_water_temp
             or curr.outlet_water_temp != last.outlet_water_temp
             or curr.zone1_actual_temp != last.zone1_actual_temp
+            or curr.dhw_target_temp != last.dhw_target_temp
+            or curr.zone1_heat_target_temp != last.zone1_heat_target_temp
             or curr.hp_status != last.hp_status
             or curr.operating_mode != last.operating_mode
         )
@@ -539,7 +542,10 @@ class AutomationController:
                     )
 
             # DHW Target Temp
-            if action.dhw_target_temp is not None:
+            if (
+                action.dhw_target_temp is not None
+                and action.dhw_target_temp != self.current_snapshot.dhw_target_temp
+            ):
                 if self._can_send_command("dhw_target_temp"):
                     self.command_callback("dhw_target_temp", action.dhw_target_temp)
                     self._record_command_sent("dhw_target_temp")
@@ -548,7 +554,10 @@ class AutomationController:
                     )
 
             # Zone1 Heat Target Temp
-            if action.target_temp is not None:
+            if (
+                action.target_temp is not None
+                and action.target_temp != self.current_snapshot.zone1_heat_target_temp
+            ):
                 # We only send target_temp if HP is On
                 is_on = (action.hp_status == "On") or (
                     action.hp_status is None and self.current_snapshot.hp_status == "On"

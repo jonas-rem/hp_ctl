@@ -13,9 +13,9 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-# Database schema - applied directly without migrations
+# Database schema - applied directly without migrations for fresh installs
 SCHEMA_SQL = """
     CREATE TABLE IF NOT EXISTS snapshots (
         timestamp TEXT PRIMARY KEY,
@@ -26,14 +26,16 @@ SCHEMA_SQL = """
         outlet_water_temp REAL,
         hp_status TEXT,
         operating_mode TEXT,
-        zone1_actual_temp REAL
+        zone1_actual_temp REAL,
+        dhw_target_temp REAL,
+        zone1_heat_target_temp REAL
     );
 
     CREATE TABLE IF NOT EXISTS schema_version (
         version INTEGER PRIMARY KEY
     );
 
-    INSERT OR REPLACE INTO schema_version (version) VALUES (1);
+    INSERT OR REPLACE INTO schema_version (version) VALUES (2);
 """
 
 
@@ -48,6 +50,8 @@ class HeatPumpSnapshot:
     inlet_water_temp: Optional[float] = None
     outlet_water_temp: Optional[float] = None
     zone1_actual_temp: Optional[float] = None
+    dhw_target_temp: Optional[float] = None
+    zone1_heat_target_temp: Optional[float] = None
     hp_status: Optional[str] = None
     operating_mode: Optional[str] = None
     # Runtime-only field (not persisted to DB)
@@ -106,6 +110,18 @@ class AutomationStorage:
             current_version = row[0] if row else 0
             logger.info("Database schema already initialized (version %d)", current_version)
 
+            if current_version < 2:
+                logger.info("Migrating database from version %d to 2", current_version)
+                try:
+                    cursor.execute("ALTER TABLE snapshots ADD COLUMN dhw_target_temp REAL")
+                    cursor.execute("ALTER TABLE snapshots ADD COLUMN zone1_heat_target_temp REAL")
+                    cursor.execute("UPDATE schema_version SET version = 2")
+                    self.conn.commit()
+                    logger.info("Migration to version 2 successful")
+                except sqlite3.OperationalError as e:
+                    # Column might already exist if migration was partially successful
+                    logger.warning("Migration warning: %s", e)
+
         logger.info("Database ready (version %d)", SCHEMA_VERSION)
 
     def insert_snapshot(self, snapshot: HeatPumpSnapshot) -> None:
@@ -120,8 +136,9 @@ class AutomationStorage:
             INSERT OR REPLACE INTO snapshots (
                 timestamp, outdoor_temp, heat_power_generation, heat_power_consumption,
                 inlet_water_temp, outlet_water_temp,
-                zone1_actual_temp, hp_status, operating_mode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                zone1_actual_temp, dhw_target_temp, zone1_heat_target_temp,
+                hp_status, operating_mode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot.timestamp.isoformat(),
@@ -131,6 +148,8 @@ class AutomationStorage:
                 snapshot.inlet_water_temp,
                 snapshot.outlet_water_temp,
                 snapshot.zone1_actual_temp,
+                snapshot.dhw_target_temp,
+                snapshot.zone1_heat_target_temp,
                 snapshot.hp_status,
                 snapshot.operating_mode,
             ),
@@ -160,6 +179,8 @@ class AutomationStorage:
 
         snapshots = []
         for row in cursor.fetchall():
+            # Handle potential missing columns in old databases gracefully
+            # although migration should have added them
             snapshots.append(
                 HeatPumpSnapshot(
                     timestamp=datetime.fromisoformat(row["timestamp"]),
@@ -169,6 +190,12 @@ class AutomationStorage:
                     inlet_water_temp=row["inlet_water_temp"],
                     outlet_water_temp=row["outlet_water_temp"],
                     zone1_actual_temp=row["zone1_actual_temp"],
+                    dhw_target_temp=row["dhw_target_temp"]
+                    if "dhw_target_temp" in row.keys()
+                    else None,
+                    zone1_heat_target_temp=row["zone1_heat_target_temp"]
+                    if "zone1_heat_target_temp" in row.keys()
+                    else None,
                     hp_status=row["hp_status"],
                     operating_mode=row["operating_mode"],
                 )
