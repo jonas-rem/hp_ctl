@@ -28,7 +28,7 @@ class AutomationController:
         config: dict[str, Any],
         mqtt_client: MqttClient,
         ha_mapper: HomeAssistantMapper,
-        command_callback: Optional[Callable[[str, Any], None]] = None,
+        command_callback: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> None:
         """Initialize automation controller.
 
@@ -520,14 +520,15 @@ class AutomationController:
 
         logger.debug("Automation decision: %s (Reason: %s)", action, action.reason)
 
-        # 3. Execute actions WITH EEPROM PROTECTION
+        # 3. Execute actions WITH EEPROM PROTECTION (Batch Commands)
+        commands_to_send: dict[str, Any] = {}
+
         if self.command_callback:
             # HP Status
             if action.hp_status and action.hp_status != self.current_snapshot.hp_status:
                 if self._can_send_command("hp_status"):
-                    self.command_callback("hp_status", action.hp_status)
-                    self._record_command_sent("hp_status")
-                    logger.info("Sent automation command: hp_status = %s", action.hp_status)
+                    commands_to_send["hp_status"] = action.hp_status
+                    logger.info("Queued automation command: hp_status = %s", action.hp_status)
 
             # Operating Mode
             if (
@@ -535,10 +536,9 @@ class AutomationController:
                 and action.operating_mode != self.current_snapshot.operating_mode
             ):
                 if self._can_send_command("operating_mode"):
-                    self.command_callback("operating_mode", action.operating_mode)
-                    self._record_command_sent("operating_mode")
+                    commands_to_send["operating_mode"] = action.operating_mode
                     logger.info(
-                        "Sent automation command: operating_mode = %s", action.operating_mode
+                        "Queued automation command: operating_mode = %s", action.operating_mode
                     )
 
             # DHW Target Temp
@@ -547,10 +547,9 @@ class AutomationController:
                 and action.dhw_target_temp != self.current_snapshot.dhw_target_temp
             ):
                 if self._can_send_command("dhw_target_temp"):
-                    self.command_callback("dhw_target_temp", action.dhw_target_temp)
-                    self._record_command_sent("dhw_target_temp")
+                    commands_to_send["dhw_target_temp"] = action.dhw_target_temp
                     logger.info(
-                        "Sent automation command: dhw_target_temp = %d", action.dhw_target_temp
+                        "Queued automation command: dhw_target_temp = %s", action.dhw_target_temp
                     )
 
             # Zone1 Heat Target Temp
@@ -563,11 +562,20 @@ class AutomationController:
                     action.hp_status is None and self.current_snapshot.hp_status == "On"
                 )
                 if is_on and self._can_send_command("zone1_heat_target_temp"):
-                    self.command_callback("zone1_heat_target_temp", action.target_temp)
-                    self._record_command_sent("zone1_heat_target_temp")
+                    commands_to_send["zone1_heat_target_temp"] = action.target_temp
                     logger.info(
-                        "Sent automation command: zone1_heat_target_temp = %d", action.target_temp
+                        "Queued automation command: zone1_heat_target_temp = %s", action.target_temp
                     )
+
+        # Send all commands in one batch if any
+        if commands_to_send and self.command_callback:
+            logger.info("Sending batch automation commands: %s", commands_to_send)
+            # Record commands for EEPROM protection stats
+            for param in commands_to_send:
+                self._record_command_sent(param)
+
+            # Send via callback
+            self.command_callback(commands_to_send)
 
         # 4. Publish active target for monitoring
         self._publish_status()

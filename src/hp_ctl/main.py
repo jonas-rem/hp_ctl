@@ -88,10 +88,7 @@ class Application:
         """
         # CHECK: Is automation enabled? If yes, ignore user MQTT commands
         if self.automation_controller and self.automation_controller.automatic_mode_enabled:
-            logger.warning(
-                "Ignoring MQTT command for %s (automation mode active - disable automation to send manual commands)",
-                topic,
-            )
+            logger.warning("Ignoring MQTT cmd for %s (automation mode active)", topic)
             return
 
         # Defensive check: Only process /set/ topics
@@ -117,45 +114,38 @@ class Application:
                 # HA might send "45.0", handle it
                 value = int(float(payload))
 
-            # Validate and encode
-            message = Message(packet_type=0x10, fields={field_name: value})
-            encoded = self.protocol.standard_codec.encode(message)
-
-            # Queue via command manager (sequential locking)
-            if self.command_manager:
-                self.command_manager.queue_command(encoded)
-                logger.info("Queued user command: %s = %s", field_name, value)
-            else:
-                logger.warning("Command manager not ready, cannot send command")
+            # Send command via centralized method
+            self.send_command({field_name: value})
 
         except ValueError as e:
             logger.warning("Invalid command %s=%s: %s", field_name, payload, e)
         except Exception as e:
             logger.exception("Failed to send command %s=%s: %s", field_name, payload, e)
 
-    def send_command(self, field_name: str, value: Any) -> None:
+    def send_command(self, commands: dict[str, Any]) -> None:
         """Send a command directly to the heat pump.
 
         Used by automation controller.
 
         Args:
-            field_name: Name of the field to set.
-            value: Value to set (already converted to appropriate type).
+            commands: Dictionary of {field: value} to set.
         """
         try:
+            log_msg = f"command: {commands}"
+
             # Validate and encode
-            message = Message(packet_type=0x10, fields={field_name: value})
+            message = Message(packet_type=0x10, fields=commands)
             encoded = self.protocol.standard_codec.encode(message)
 
             # Queue via command manager (sequential locking)
             if self.command_manager:
                 self.command_manager.queue_command(encoded)
-                logger.info("Queued automation command: %s = %s", field_name, value)
+                logger.info("Queued %s", log_msg)
             else:
                 logger.warning("Command manager not ready, cannot send automation command")
 
         except Exception as e:
-            logger.exception("Failed to send automation command %s=%s: %s", field_name, value, e)
+            logger.exception("Failed to send command %s: %s", commands, e)
 
     def _on_mqtt_connect(self) -> None:
         """Callback on MQTT connection - publish discovery and subscribe to commands."""

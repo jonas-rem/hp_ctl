@@ -277,6 +277,7 @@ class TestEEPROMProtection:
         """Verify first command is always allowed."""
         assert controller._can_send_command("hp_status") is True
         assert controller._can_send_command("operating_mode") is True
+
     def test_can_send_command_under_limit(self, controller):
         """Verify commands allowed when under 15/hour limit."""
 
@@ -317,7 +318,6 @@ class TestEEPROMProtection:
             mock_datetime.now.return_value = future_time
 
             # Should be allowed now (old changes expired)
-            # Should be allowed now (old changes expired)
             assert controller._can_send_command("hp_status") is True
 
     def test_per_parameter_tracking(self, controller):
@@ -330,7 +330,6 @@ class TestEEPROMProtection:
         assert controller._can_send_command("hp_status") is False
 
         # But operating_mode should still work (independent tracking)
-        assert controller._can_send_command("operating_mode") is True
         assert controller._can_send_command("operating_mode") is True
 
     def test_record_command_sent(self, controller):
@@ -366,6 +365,7 @@ class TestEEPROMProtection:
             # Should be able to send (only 10 recent entries remain after expiry, limit is 15)
             assert controller._can_send_command("hp_status") is True
 
+            # After checking, old entries should be removed
             assert len(controller.change_history["hp_status"]) == 10
 
 
@@ -383,9 +383,8 @@ class TestCommandSuppression:
                 command_callback=command_callback,
             )
             # Mock weather data to avoid skipping control logic
-            controller.weather_client.get_last_data.return_value = MagicMock(
-                outdoor_temp_avg_24h=5.0
-            )
+            controller.weather_client.get_last_data = MagicMock()
+            controller.weather_client.get_last_data.return_value.outdoor_temp_avg_24h = 5.0
 
             yield controller
             controller.storage.close()
@@ -441,12 +440,15 @@ class TestCommandSuppression:
         # 2. Run control logic
         controller._run_control_logic()
 
-        # 3. Verify commands WERE sent
-        assert controller.command_callback.call_count == 4
-        controller.command_callback.assert_any_call("hp_status", "On")
-        controller.command_callback.assert_any_call("operating_mode", "Heat+DHW")
-        controller.command_callback.assert_any_call("dhw_target_temp", 50.0)
-        controller.command_callback.assert_any_call("zone1_heat_target_temp", 35.0)
+        # 3. Verify commands WERE sent as a single batch
+        assert controller.command_callback.call_count == 1
+        expected_batch = {
+            "hp_status": "On",
+            "operating_mode": "Heat+DHW",
+            "dhw_target_temp": 50.0,
+            "zone1_heat_target_temp": 35.0,
+        }
+        controller.command_callback.assert_called_with(expected_batch)
 
     def test_partial_command_sending(self, controller_with_callback):
         """Test that only changed values trigger commands."""
@@ -472,13 +474,7 @@ class TestCommandSuppression:
         # 2. Run control logic
         controller._run_control_logic()
 
-        # 3. Verify only changed commands were sent
-        assert controller.command_callback.call_count == 2
-        controller.command_callback.assert_any_call("operating_mode", "Heat+DHW")
-        controller.command_callback.assert_any_call("zone1_heat_target_temp", 35.0)
-
-        # Verify others were NOT sent
-        with pytest.raises(AssertionError):
-            controller.command_callback.assert_any_call("hp_status", "On")
-        with pytest.raises(AssertionError):
-            controller.command_callback.assert_any_call("dhw_target_temp", 50.0)
+        # 3. Verify only changed commands were sent in batch
+        assert controller.command_callback.call_count == 1
+        expected_batch = {"operating_mode": "Heat+DHW", "zone1_heat_target_temp": 35.0}
+        controller.command_callback.assert_called_with(expected_batch)
