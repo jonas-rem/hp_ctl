@@ -34,7 +34,7 @@ test_cases:
       zone1_target_temp: 28
       inlet_water_temp: 43
       pump_flow_rate: 11.10546875
-      operating_mode: "Heat"
+      operating_mode: "Heat+DHW"
       dhw_actual_temp: 42
       pump_speed: 1350
       hp_status: "On"

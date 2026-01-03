@@ -400,8 +400,8 @@ def operating_mode_converter(value: int) -> str:
 
     Returns simple strings matching OPERATING_MODE_OPTIONS for single-zone setups.
     """
-    dhw_bits = (value >> 2) & 0b11
-    mode_bits = (value >> 4) & 0b1111
+    mode_bits = value & 0x0F
+    dhw_bits = (value >> 4) & 0b11
 
     dhw_on = dhw_bits == 0b10
 
@@ -413,11 +413,11 @@ def operating_mode_converter(value: int) -> str:
         mode_str = "Heat"
     elif mode_bits in [0b0011, 0b0111]:  # Cool variants
         mode_str = "Cool"
-    elif mode_bits in [0b1001, 0b1010]:  # Auto variants
+    elif mode_bits in [0b1001, 0b1000, 0b1010]:  # Auto variants (8, 9, 10)
         mode_str = "Auto"
 
     if mode_str == "Unknown":
-        raise ValueError(f"Invalid operating_mode: mode_bits={mode_bits:04b}")
+        raise ValueError(f"Invalid operating_mode: mode_bits={mode_bits:04b} (value=0x{value:02x})")
 
     if dhw_on:
         return f"{mode_str}+DHW"
@@ -431,14 +431,19 @@ def temp_inverse_converter(value: float) -> int:
 
 def operating_mode_inverse_converter(value: str) -> int:
     """Convert operating mode string to raw byte 6 value"""
+    # Bit mapping for Byte 6:
+    # Bits 0-3: Mode (1:DHW, 2:Heat, 3:Cool, 8:Auto)
+    # Bits 4-5: DHW status (b01=off, b10=on)
+    # Bits 6-7: Zones (bit 6=Z1, bit 7=Z2)
+    # We always set Zone 1 ON (0x40) for these commands.
     mapping = {
-        "Heat": 0x22,  # Mode 2, DHW 0, Z1 1
-        "Cool": 0x32,  # Mode 3, DHW 0, Z1 1
-        "Auto": 0x92,  # Mode 9, DHW 0, Z1 1
-        "DHW": 0x18,  # Mode 1, DHW 2, Z1 0
-        "Heat+DHW": 0x2A,  # Mode 2, DHW 2, Z1 1
-        "Cool+DHW": 0x3A,  # Mode 3, DHW 2, Z1 1
-        "Auto+DHW": 0x9A,  # Mode 9, DHW 2, Z1 1
+        "Heat": 0x40 | 0x10 | 0x02,  # Z1 On, DHW Off, Mode Heat -> 0x52
+        "Cool": 0x40 | 0x10 | 0x03,  # Z1 On, DHW Off, Mode Cool -> 0x53
+        "Auto": 0x40 | 0x10 | 0x08,  # Z1 On, DHW Off, Mode Auto -> 0x58
+        "DHW": 0x21,  # Z1 Off, DHW On, Mode DHW  -> 0x21
+        "Heat+DHW": 0x40 | 0x20 | 0x02,  # Z1 On, DHW On, Mode Heat  -> 0x62
+        "Cool+DHW": 0x40 | 0x20 | 0x03,  # Z1 On, DHW On, Mode Cool  -> 0x63
+        "Auto+DHW": 0x40 | 0x20 | 0x08,  # Z1 On, DHW On, Mode Auto  -> 0x68
     }
 
     if value not in mapping:

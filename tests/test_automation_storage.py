@@ -35,7 +35,7 @@ def test_database_initialization(temp_db):
     # Check schema version
     cursor.execute("SELECT version FROM schema_version")
     version = cursor.fetchone()[0]
-    assert version == 1
+    assert version == 2
 
 
 def test_insert_and_retrieve_snapshot(temp_db):
@@ -166,6 +166,8 @@ def test_schema_has_all_required_columns(temp_db):
         "hp_status",
         "operating_mode",
         "zone1_actual_temp",
+        "dhw_target_temp",
+        "zone1_heat_target_temp",
     }
 
     assert columns == expected_columns, f"Expected {expected_columns}, got {columns}"

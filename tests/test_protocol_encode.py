@@ -66,7 +66,13 @@ class TestEncode:
         """Operating mode is correctly encoded"""
         msg = Message(packet_type=0x10, fields={"operating_mode": "Heat"})
         encoded = STANDARD_CODEC.encode(msg)
-        assert encoded[6] == 0x22  # 34
+        assert encoded[6] == 0x52  # Z1 On, DHW Off, Mode Heat
+
+    def test_operating_mode_encode_heat_dhw(self):
+        """Operating mode Heat+DHW is correctly encoded"""
+        msg = Message(packet_type=0x10, fields={"operating_mode": "Heat+DHW"})
+        encoded = STANDARD_CODEC.encode(msg)
+        assert encoded[6] == 0x62  # Z1 On, DHW On, Mode Heat
 
     def test_validation_ranges(self):
         """Values outside valid range raise ValueError"""
