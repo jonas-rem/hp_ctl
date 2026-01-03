@@ -28,6 +28,7 @@ UART. The system still publishes to an MQTT broker.
 
 - **`protocol.py`** - Message codec and field specifications
 - **`uart.py`** - UART receiver with validation
+- **`query_manager.py`** - Periodic status queries (30s interval, always active)
 - **`mqtt.py`** - MQTT client wrapper
 - **`homeassistant.py`** - Home Assistant MQTT Discovery mapper
 - **`main.py`** - Application orchestration with retry logic
@@ -234,7 +235,9 @@ at runtime via MQTT/Home Assistant.
 
 - **Manual Mode:** Data collection only (default). Heat pump control
   remains fully manual via Home Assistant.
-- **Automatic Mode:** Enables intelligent automatic control (future).
+- **Automatic Mode:** Enables intelligent automatic control with EEPROM
+  protection (max 10 changes/hour per parameter). User MQTT commands
+  are blocked when automatic mode is active.
   Toggle via MQTT: `hp_ctl/aquarea_k/automation/mode/set`
 
 ### Features
