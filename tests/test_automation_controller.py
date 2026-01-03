@@ -3,8 +3,6 @@
 
 """Tests for automation controller change detection."""
 
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -310,3 +308,102 @@ class TestSnapshotChangeDetection:
 
         # Manually trigger change detection
         assert controller._snapshot_has_changed() is True
+
+
+class TestEEPROMProtection:
+    """Test suite for EEPROM protection (10 changes per hour limit)."""
+
+    def test_can_send_command_first_time(self, controller):
+        """Verify first command is always allowed."""
+        assert controller._can_send_command("hp_status") is True
+        assert controller._can_send_command("operating_mode") is True
+
+    def test_can_send_command_under_limit(self, controller):
+        """Verify commands allowed when under 10/hour limit."""
+
+        # Send 9 commands
+        for i in range(9):
+            assert controller._can_send_command("hp_status") is True
+            controller._record_command_sent("hp_status")
+
+        # 10th should still be allowed
+        assert controller._can_send_command("hp_status") is True
+
+    def test_limit_enforcement_10_per_hour(self, controller):
+        """Verify 11th command is rejected (10/hour limit)."""
+
+        # Send 10 commands
+        for i in range(10):
+            assert controller._can_send_command("hp_status") is True
+            controller._record_command_sent("hp_status")
+
+        # 11th should be rejected
+        assert controller._can_send_command("hp_status") is False
+
+    def test_rolling_window_expiry(self, controller):
+        """Verify old changes expire after 1 hour (rolling window)."""
+        from datetime import datetime, timedelta
+
+        # Record 10 changes at t=0
+        base_time = datetime.now()
+        for i in range(10):
+            controller.change_history.setdefault("hp_status", []).append(base_time)
+
+        # Verify limit reached
+        assert controller._can_send_command("hp_status") is False
+
+        # Mock time to be 61 minutes later (changes should expire)
+        with patch("hp_ctl.automation.controller.datetime") as mock_datetime:
+            future_time = base_time + timedelta(minutes=61)
+            mock_datetime.now.return_value = future_time
+
+            # Should be allowed now (old changes expired)
+            assert controller._can_send_command("hp_status") is True
+
+    def test_per_parameter_tracking(self, controller):
+        """Verify limits tracked independently per parameter."""
+        # Max out hp_status
+        for i in range(10):
+            controller._record_command_sent("hp_status")
+
+        # hp_status should be blocked
+        assert controller._can_send_command("hp_status") is False
+
+        # But operating_mode should still work (independent tracking)
+        assert controller._can_send_command("operating_mode") is True
+
+    def test_record_command_sent(self, controller):
+        """Verify command recording updates history."""
+        from datetime import datetime
+
+        assert "test_param" not in controller.change_history
+
+        controller._record_command_sent("test_param")
+
+        assert "test_param" in controller.change_history
+        assert len(controller.change_history["test_param"]) == 1
+        assert isinstance(controller.change_history["test_param"][0], datetime)
+
+    def test_partial_expiry_rolling_window(self, controller):
+        """Verify rolling window expires only old entries."""
+        from datetime import datetime, timedelta
+
+        base_time = datetime.now()
+
+        # Add 5 old entries (70 minutes ago - should expire)
+        old_time = base_time - timedelta(minutes=70)
+        controller.change_history["hp_status"] = [old_time] * 5
+
+        # Add 5 recent entries (10 minutes ago - should NOT expire)
+        recent_time = base_time - timedelta(minutes=10)
+        controller.change_history["hp_status"].extend([recent_time] * 5)
+
+        # Mock current time
+        with patch("hp_ctl.automation.controller.datetime") as mock_datetime:
+            mock_datetime.now.return_value = base_time
+
+            # Should be able to send (only 5 recent entries remain after expiry)
+            assert controller._can_send_command("hp_status") is True
+
+            # After checking, old entries should be removed
+            assert len(controller.change_history["hp_status"]) == 5

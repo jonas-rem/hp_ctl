@@ -207,24 +207,28 @@ class TestApp:
 
     @patch("hp_ctl.main.MqttClient")
     @patch("hp_ctl.main.UartTransceiver")
-    def test_command_handling(self, mock_uart_class, mock_mqtt_class, test_config):
+    @patch("hp_ctl.main.CommandManager")
+    def test_command_handling(self, mock_cm_class, mock_uart_class, mock_mqtt_class, test_config):
         """Test MQTT command handling."""
         mock_mqtt = MagicMock()
         mock_mqtt_class.return_value = mock_mqtt
         mock_uart = MagicMock()
         mock_uart_class.return_value = mock_uart
+        mock_cm = MagicMock()
+        mock_cm_class.return_value = mock_cm
 
         app = Application(config_path=test_config)
         app.mqtt_client = mock_mqtt
         app.uart_transceiver = mock_uart
+        app.command_manager = mock_cm
 
         # Test valid command
         topic = "hp_ctl/aquarea_k/set/dhw_target_temp"
         payload = "48"
         app._on_mqtt_command(topic, payload)
 
-        assert mock_uart.send.called
+        assert mock_cm.queue_command.called
         # Verify encoded message (rough check)
-        args = mock_uart.send.call_args[0][0]
+        args = mock_cm.queue_command.call_args[0][0]
         # Check standard packet type 0x10 at byte 3
         assert args[3] == 0x10
