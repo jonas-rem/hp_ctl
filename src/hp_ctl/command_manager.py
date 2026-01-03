@@ -17,7 +17,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Hardcoded configuration
-QUERY_INTERVAL = 30  # seconds between queries
+QUERY_INTERVAL = 15  # seconds between queries
 RESPONSE_TIMEOUT = 2.0  # seconds to wait for response
 
 
@@ -31,7 +31,7 @@ class CommandManager:
     - Prioritizing setting commands over queries
 
     Hardcoded configuration:
-    - Query interval: 30 seconds
+    - Query interval: 15 seconds
     - Response timeout: 2 seconds
     - No startup delay (first query sent immediately)
     """

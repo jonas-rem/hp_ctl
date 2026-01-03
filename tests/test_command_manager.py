@@ -82,8 +82,8 @@ class TestCommandManager:
         # Cleanup
         cm.stop()
 
-    def test_query_interval_30s(self):
-        """Verify queries are sent every 30 seconds."""
+    def test_query_interval_15s(self):
+        """Verify queries are sent every 15 seconds."""
         uart_mock = Mock()
         cm = CommandManager(uart_mock)
 
@@ -103,13 +103,13 @@ class TestCommandManager:
             assert uart_mock.send.call_count == 2
             cm.on_response_received()  # Unlock after extra query
 
-            # Advance time to 29s (not enough)
-            mock_time.time.return_value = 29.0
+            # Advance time to 14s (not enough)
+            mock_time.time.return_value = 14.0
             time.sleep(0.6)  # Wait for loop cycle
             first_count = uart_mock.send.call_count
 
-            # Advance time to 31s (should trigger second query sequence)
-            mock_time.time.return_value = 31.0
+            # Advance time to 16s (should trigger second query sequence)
+            mock_time.time.return_value = 16.0
             time.sleep(0.6)  # Wait for loop cycle
             second_count = uart_mock.send.call_count
 
