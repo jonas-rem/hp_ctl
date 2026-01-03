@@ -100,9 +100,15 @@ class AutomationController:
         self.automation_paused = False
         self.last_error: Optional[str] = None
 
+        # EEPROM protection: track command history per parameter
+        # Limits to 10 changes per hour per parameter to prevent EEPROM wear
+        self.change_history: dict[str, list[datetime]] = {}
+        self.max_changes_per_hour = 10  # Hardcoded limit
+
         logger.info(
-            "Automation controller initialized (automatic mode: %s)",
+            "Automation controller initialized (automatic mode: %s, EEPROM limit: %d/hour)",
             "enabled" if self.automatic_mode_enabled else "disabled",
+            self.max_changes_per_hour,
         )
 
     def start(self) -> None:
@@ -142,9 +148,7 @@ class AutomationController:
 
         # Register message listener with topic filter
         topic_filter = f"{self.ha_mapper.topic_prefix}/{self.device_id}/#"
-        self.mqtt_client.add_message_listener(
-            self._on_message_received, topic_filter=topic_filter
-        )
+        self.mqtt_client.add_message_listener(self._on_message_received, topic_filter=topic_filter)
         logger.debug("Registered automation listener for: %s", topic_filter)
 
         # Publish Home Assistant discovery for automation
@@ -395,10 +399,7 @@ class AutomationController:
         today_str = today.date().isoformat()
 
         # Check if we need to recalculate
-        if (
-            self._cached_daily_summary is None
-            or self._cached_summary_date != today_str
-        ):
+        if self._cached_daily_summary is None or self._cached_summary_date != today_str:
             # Recalculate and cache
             self._cached_daily_summary = self.storage.get_daily_summary(today)
             self._cached_summary_date = today_str
@@ -412,6 +413,57 @@ class AutomationController:
         discovery_configs = self.discovery.get_discovery_configs()
         for topic, payload in discovery_configs.items():
             self.mqtt_client.publish(topic, payload)
+
+    def _can_send_command(self, param_name: str) -> bool:
+        """Check if we can send command without exceeding EEPROM write limit.
+
+        Allows max 10 changes per hour per parameter to prevent EEPROM wear.
+        Uses rolling window: old changes (>1 hour) are automatically expired.
+
+        Args:
+            param_name: Name of parameter to check (e.g., 'hp_status').
+
+        Returns:
+            True if command can be sent, False if limit exceeded.
+        """
+        now = datetime.now()
+        one_hour_ago = now - timedelta(hours=1)
+
+        # Get change history for this parameter
+        if param_name not in self.change_history:
+            self.change_history[param_name] = []
+
+        history = self.change_history[param_name]
+
+        # Remove changes older than 1 hour (rolling window)
+        history[:] = [ts for ts in history if ts > one_hour_ago]
+
+        # Check if we've hit the limit
+        if len(history) >= self.max_changes_per_hour:
+            logger.warning(
+                "EEPROM protection: %s change limit reached (%d in last hour), suppressing command",
+                param_name,
+                len(history),
+            )
+            return False
+
+        return True
+
+    def _record_command_sent(self, param_name: str) -> None:
+        """Record that a command was sent (for EEPROM protection tracking).
+
+        Args:
+            param_name: Name of parameter that was changed.
+        """
+        now = datetime.now()
+        if param_name not in self.change_history:
+            self.change_history[param_name] = []
+        self.change_history[param_name].append(now)
+        logger.debug(
+            "EEPROM protection: recorded %s change (%d in last hour)",
+            param_name,
+            len(self.change_history[param_name]),
+        )
 
     def _control_loop(self) -> None:
         """Background loop for active heat pump control (runs every 1 min)."""
@@ -465,27 +517,48 @@ class AutomationController:
 
         logger.debug("Automation decision: %s (Reason: %s)", action, action.reason)
 
-        # 3. Execute actions
+        # 3. Execute actions WITH EEPROM PROTECTION
         if self.command_callback:
+            # HP Status
             if action.hp_status and action.hp_status != self.current_snapshot.hp_status:
-                self.command_callback("hp_status", action.hp_status)
+                if self._can_send_command("hp_status"):
+                    self.command_callback("hp_status", action.hp_status)
+                    self._record_command_sent("hp_status")
+                    logger.info("Sent automation command: hp_status = %s", action.hp_status)
 
+            # Operating Mode
             if (
                 action.operating_mode
                 and action.operating_mode != self.current_snapshot.operating_mode
             ):
-                self.command_callback("operating_mode", action.operating_mode)
+                if self._can_send_command("operating_mode"):
+                    self.command_callback("operating_mode", action.operating_mode)
+                    self._record_command_sent("operating_mode")
+                    logger.info(
+                        "Sent automation command: operating_mode = %s", action.operating_mode
+                    )
 
+            # DHW Target Temp
             if action.dhw_target_temp is not None:
-                self.command_callback("dhw_target_temp", action.dhw_target_temp)
+                if self._can_send_command("dhw_target_temp"):
+                    self.command_callback("dhw_target_temp", action.dhw_target_temp)
+                    self._record_command_sent("dhw_target_temp")
+                    logger.info(
+                        "Sent automation command: dhw_target_temp = %d", action.dhw_target_temp
+                    )
 
+            # Zone1 Heat Target Temp
             if action.target_temp is not None:
                 # We only send target_temp if HP is On
                 is_on = (action.hp_status == "On") or (
                     action.hp_status is None and self.current_snapshot.hp_status == "On"
                 )
-                if is_on:
+                if is_on and self._can_send_command("zone1_heat_target_temp"):
                     self.command_callback("zone1_heat_target_temp", action.target_temp)
+                    self._record_command_sent("zone1_heat_target_temp")
+                    logger.info(
+                        "Sent automation command: zone1_heat_target_temp = %d", action.target_temp
+                    )
 
         # 4. Publish active target for monitoring
         self._publish_status()
