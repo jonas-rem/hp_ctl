@@ -35,7 +35,7 @@ automation:
   # System uses linear interpolation between points
   heat_demand_map:
     - outdoor_temp: -10  # °C
-      daily_kwh: 60      # kWh required per day
+      daily_kwh: 70      # kWh required per day
     - outdoor_temp: 20
       daily_kwh: 0
 
