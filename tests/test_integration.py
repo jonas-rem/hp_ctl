@@ -232,3 +232,124 @@ class TestApp:
         args = mock_cm.queue_command.call_args[0][0]
         # Check standard packet type 0x10 at byte 3
         assert args[3] == 0x10
+
+    @patch("hp_ctl.main.MqttClient")
+    @patch("hp_ctl.main.UartTransceiver")
+    @patch("hp_ctl.main.CommandManager")
+    def test_quiet_mode_allowed_during_automation(
+        self, mock_cm_class, mock_uart_class, mock_mqtt_class, test_config
+    ):
+        """Test that quiet_mode commands are allowed during automation mode."""
+        mock_mqtt = MagicMock()
+        mock_mqtt_class.return_value = mock_mqtt
+        mock_uart = MagicMock()
+        mock_uart_class.return_value = mock_uart
+        mock_cm = MagicMock()
+        mock_cm_class.return_value = mock_cm
+
+        app = Application(config_path=test_config)
+        app.mqtt_client = mock_mqtt
+        app.uart_transceiver = mock_uart
+        app.command_manager = mock_cm
+
+        # Create mock automation controller with automatic mode enabled
+        mock_automation = MagicMock()
+        mock_automation.automatic_mode_enabled = True
+        app.automation_controller = mock_automation
+
+        # Test quiet_mode command during automation
+        topic = "hp_ctl/aquarea_k/set/quiet_mode"
+        payload = "Level 1"
+        app._on_mqtt_command(topic, payload)
+
+        # Command should be processed (queue_command called)
+        assert mock_cm.queue_command.called
+        args = mock_cm.queue_command.call_args[0][0]
+        assert args[3] == 0x10  # Standard packet type
+
+    @patch("hp_ctl.main.MqttClient")
+    @patch("hp_ctl.main.UartTransceiver")
+    @patch("hp_ctl.main.CommandManager")
+    def test_other_commands_blocked_during_automation(
+        self, mock_cm_class, mock_uart_class, mock_mqtt_class, test_config
+    ):
+        """Test that non-quiet_mode commands are blocked during automation mode."""
+        mock_mqtt = MagicMock()
+        mock_mqtt_class.return_value = mock_mqtt
+        mock_uart = MagicMock()
+        mock_uart_class.return_value = mock_uart
+        mock_cm = MagicMock()
+        mock_cm_class.return_value = mock_cm
+
+        app = Application(config_path=test_config)
+        app.mqtt_client = mock_mqtt
+        app.uart_transceiver = mock_uart
+        app.command_manager = mock_cm
+
+        # Create mock automation controller with automatic mode enabled
+        mock_automation = MagicMock()
+        mock_automation.automatic_mode_enabled = True
+        app.automation_controller = mock_automation
+
+        # Test dhw_target_temp command during automation (should be blocked)
+        topic = "hp_ctl/aquarea_k/set/dhw_target_temp"
+        payload = "50"
+        app._on_mqtt_command(topic, payload)
+
+        # Command should NOT be processed (queue_command not called)
+        assert not mock_cm.queue_command.called
+
+        # Test zone1_heat_target_temp command during automation (should be blocked)
+        mock_cm.reset_mock()
+        topic = "hp_ctl/aquarea_k/set/zone1_heat_target_temp"
+        payload = "40"
+        app._on_mqtt_command(topic, payload)
+
+        # Command should NOT be processed
+        assert not mock_cm.queue_command.called
+
+        # Test hp_status command during automation (should be blocked)
+        mock_cm.reset_mock()
+        topic = "hp_ctl/aquarea_k/set/hp_status"
+        payload = "On"
+        app._on_mqtt_command(topic, payload)
+
+        # Command should NOT be processed
+        assert not mock_cm.queue_command.called
+
+    @patch("hp_ctl.main.MqttClient")
+    @patch("hp_ctl.main.UartTransceiver")
+    @patch("hp_ctl.main.CommandManager")
+    def test_all_commands_allowed_when_automation_disabled(
+        self, mock_cm_class, mock_uart_class, mock_mqtt_class, test_config
+    ):
+        """Test that all commands work when automation mode is disabled."""
+        mock_mqtt = MagicMock()
+        mock_mqtt_class.return_value = mock_mqtt
+        mock_uart = MagicMock()
+        mock_uart_class.return_value = mock_uart
+        mock_cm = MagicMock()
+        mock_cm_class.return_value = mock_cm
+
+        app = Application(config_path=test_config)
+        app.mqtt_client = mock_mqtt
+        app.uart_transceiver = mock_uart
+        app.command_manager = mock_cm
+
+        # Create mock automation controller with automatic mode disabled
+        mock_automation = MagicMock()
+        mock_automation.automatic_mode_enabled = False
+        app.automation_controller = mock_automation
+
+        # Test dhw_target_temp command (should be allowed)
+        topic = "hp_ctl/aquarea_k/set/dhw_target_temp"
+        payload = "50"
+        app._on_mqtt_command(topic, payload)
+        assert mock_cm.queue_command.called
+
+        # Test quiet_mode command (should be allowed)
+        mock_cm.reset_mock()
+        topic = "hp_ctl/aquarea_k/set/quiet_mode"
+        payload = "Level 1"
+        app._on_mqtt_command(topic, payload)
+        assert mock_cm.queue_command.called

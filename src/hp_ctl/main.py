@@ -86,11 +86,6 @@ class Application:
             topic: Command topic (e.g., "hp_ctl/aquarea_k/set/dhw_target_temp")
             payload: Command value (string representation)
         """
-        # CHECK: Is automation enabled? If yes, ignore user MQTT commands
-        if self.automation_controller and self.automation_controller.automatic_mode_enabled:
-            logger.warning("Ignoring MQTT cmd for %s (automation mode active)", topic)
-            return
-
         # Defensive check: Only process /set/ topics
         if "/set/" not in topic:
             logger.warning("Ignoring non-command topic: %s", topic)
@@ -99,6 +94,14 @@ class Application:
         # Extract field name from topic
         # Format: hp_ctl/aquarea_k/set/{field_name}
         field_name = topic.rsplit("/", 1)[-1]
+
+        # CHECK: Is automation enabled? If yes, only allow quiet_mode changes
+        if self.automation_controller and self.automation_controller.automatic_mode_enabled:
+            if field_name != "quiet_mode":
+                logger.warning("Ignoring MQTT cmd for %s (automation mode active)", topic)
+                return
+            else:
+                logger.info("Allowing quiet_mode change during automation mode")
 
         try:
             # Get field spec
