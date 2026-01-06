@@ -35,14 +35,16 @@ automation:
   # System uses linear interpolation between points
   heat_demand_map:
     - outdoor_temp: -10  # °C
-      daily_kwh: 70      # kWh required per day
+      daily_kwh: 75      # kWh required per day
     - outdoor_temp: 20
       daily_kwh: 0
 
-  # Time periods when the heat pump should be forced OFF
-  night_off_periods:
-    - start: "22:00"
-      end: "09:30"
+  # Time period when the heat pump should be forced OFF
+  # On warmer days, heating start is automatically delayed within this window
+  # based on the heat budget (calculated from previous day's temperature)
+  night_off_period:
+    start: "22:30"
+    end: "07:30"
 
   # Domestic Hot Water (DHW) schedule
   dhw:
