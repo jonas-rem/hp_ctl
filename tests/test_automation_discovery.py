@@ -11,8 +11,8 @@ def test_automation_discovery_structure():
     discovery = AutomationDiscovery(device_id="test_hp", device_name="Test HP")
     configs = discovery.get_discovery_configs()
 
-    # Should have 10 entities (1 select + 9 sensors)
-    assert len(configs) == 10
+    # Should have 11 entities (1 select + 10 sensors including heating_start_time)
+    assert len(configs) == 11
 
     # Check Mode Select
     mode_topic = "homeassistant/select/test_hp_automation/mode/config"

@@ -108,6 +108,11 @@ class AutomationDiscovery:
             state_class="total",
         )
         add_sensor(
+            "heating_start_time",
+            "Heating Start Time",
+            icon="mdi:clock-start",
+        )
+        add_sensor(
             "active_target_temp",
             "Active Target Temperature",
             unit="°C",

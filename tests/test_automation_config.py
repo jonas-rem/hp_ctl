@@ -166,11 +166,89 @@ def test_get_heat_demand_below_range():
 
 def test_get_heat_demand_above_range():
     """Test heat demand for temp above highest mapping."""
-    heat_demand_map = [
-        {"outdoor_temp": 0, "daily_kwh": 35},
-        {"outdoor_temp": 10, "daily_kwh": 20},
+    heat_demand_map: list[dict[str, float]] = [
+        {"outdoor_temp": 0.0, "daily_kwh": 35.0},
+        {"outdoor_temp": 10.0, "daily_kwh": 20.0},
     ]
 
     # Above range: should return highest value
     result = get_heat_demand_for_temp(heat_demand_map, 20)
     assert result == 20
+
+
+def test_validate_night_off_period():
+    """Test validation of night_off_period (singular)."""
+    config = {
+        "enabled": True,
+        "weather": {
+            "latitude": 52.52,
+            "longitude": 13.41,
+        },
+        "heat_demand_map": [
+            {"outdoor_temp": 0, "daily_kwh": 35},
+            {"outdoor_temp": 10, "daily_kwh": 20},
+        ],
+        "night_off_period": {
+            "start": "22:30",
+            "end": "07:30",
+        },
+        "storage": {
+            "db_path": "/tmp/test.db",
+            "retention_days": 30,
+        },
+    }
+
+    # Should not raise
+    validate_automation_config(config)
+
+
+def test_validate_night_off_period_invalid_format():
+    """Test error on invalid time format in night_off_period."""
+    config = {
+        "enabled": True,
+        "weather": {
+            "latitude": 52.52,
+            "longitude": 13.41,
+        },
+        "heat_demand_map": [
+            {"outdoor_temp": 0, "daily_kwh": 35},
+            {"outdoor_temp": 10, "daily_kwh": 20},
+        ],
+        "night_off_period": {
+            "start": "25:00",  # Invalid hour
+            "end": "07:30",
+        },
+        "storage": {
+            "db_path": "/tmp/test.db",
+            "retention_days": 30,
+        },
+    }
+
+    with pytest.raises(ValueError, match="Invalid time format in night_off_period.start"):
+        validate_automation_config(config)
+
+
+def test_validate_night_off_period_missing_fields():
+    """Test error when night_off_period is missing start or end."""
+    config = {
+        "enabled": True,
+        "weather": {
+            "latitude": 52.52,
+            "longitude": 13.41,
+        },
+        "heat_demand_map": [
+            {"outdoor_temp": 0, "daily_kwh": 35},
+            {"outdoor_temp": 10, "daily_kwh": 20},
+        ],
+        "night_off_period": {
+            "start": "22:30",
+            # Missing 'end'
+        },
+        "storage": {
+            "db_path": "/tmp/test.db",
+            "retention_days": 30,
+        },
+    }
+
+    with pytest.raises(ValueError, match="night_off_period must have 'start' and 'end'"):
+        validate_automation_config(config)

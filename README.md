@@ -324,7 +324,10 @@ All topics are prefixed with `hp_ctl/{device_id}/`. Use
 2. **Weather Updates:** 24-hour average outdoor temperature from the
    previous day is fetched on startup and then automatically at
    midnight (00:00) each day. This provides a stable metric that
-   correlates well with daily heat demand.
+   correlates well with daily heat demand. Based on this temperature,
+   a **dynamic heating start time** is calculated - on cold days
+   (<=0°C) heating starts immediately after the night-off period ends,
+   while on warmer days it is delayed until closer to DHW time.
 
 3. **Energy Integration:** Daily energy totals are calculated using
    trapezoidal integration of instantaneous power readings.

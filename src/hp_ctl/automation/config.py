@@ -76,28 +76,25 @@ def validate_automation_config(config: dict[str, Any]) -> None:
 
         prev_temp = outdoor_temp
 
-    # Validate night_off_periods
-    if "night_off_periods" in config:
-        night_off = config["night_off_periods"]
-        if not isinstance(night_off, list):
-            raise ValueError("automation.night_off_periods must be a list")
-        for idx, period in enumerate(night_off):
-            if "start" not in period or "end" not in period:
-                raise ValueError(f"night_off_periods[{idx}] must have 'start' and 'end'")
-            # Simple format check (HH:MM)
-            for key in ["start", "end"]:
-                time_str = period[key]
-                try:
-                    parts = time_str.split(":")
-                    if len(parts) != 2:
-                        raise ValueError()
-                    h, m = int(parts[0]), int(parts[1])
-                    if not (0 <= h <= 23 and 0 <= m <= 59):
-                        raise ValueError()
-                except (ValueError, IndexError):
-                    raise ValueError(
-                        f"Invalid time format in night_off_periods[{idx}].{key}: {time_str}"
-                    )
+    # Validate night_off_period (singular)
+    if "night_off_period" in config:
+        period = config["night_off_period"]
+        if not isinstance(period, dict):
+            raise ValueError("automation.night_off_period must be a dictionary")
+        if "start" not in period or "end" not in period:
+            raise ValueError("night_off_period must have 'start' and 'end'")
+        # Simple format check (HH:MM)
+        for key in ["start", "end"]:
+            time_str = period[key]
+            try:
+                parts = time_str.split(":")
+                if len(parts) != 2:
+                    raise ValueError()
+                h, m = int(parts[0]), int(parts[1])
+                if not (0 <= h <= 23 and 0 <= m <= 59):
+                    raise ValueError()
+            except (ValueError, IndexError):
+                raise ValueError(f"Invalid time format in night_off_period.{key}: {time_str}")
 
     # Validate ramping
     if "ramping" in config:

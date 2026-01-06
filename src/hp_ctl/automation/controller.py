@@ -100,6 +100,10 @@ class AutomationController:
         self.automation_paused = False
         self.last_error: Optional[str] = None
 
+        # Heating start time (calculated when weather data arrives)
+        self.last_heating_start_time: Optional[str] = None
+        self.last_heating_start_reason: Optional[str] = None
+
         # EEPROM protection: track command history per parameter
         # Limits write frequency to prevent EEPROM wear
         self.change_history: dict[str, list[datetime]] = {}
@@ -319,6 +323,27 @@ class AutomationController:
             self.heat_demand_map, weather_data.outdoor_temp_avg_24h
         )
         logger.debug("Estimated daily heat demand: %.1f kWh", estimated_demand)
+
+        # Calculate heating start time based on heat budget
+        heating_start, start_reason = self.algorithm.calculate_heating_start_time(
+            weather_data.outdoor_temp_avg_24h
+        )
+        self.last_heating_start_time = heating_start
+        self.last_heating_start_reason = start_reason
+
+        # Get boundaries for logging
+        night_off = self.config.get("night_off_period", {})
+        earliest = night_off.get("end", "07:30")
+        dhw = self.config.get("dhw", {})
+        latest = dhw.get("start_time", "13:00") if dhw.get("enabled") else "13:00"
+
+        logger.info(
+            "Calculated heating start time: %s (%s, earliest: %s, latest: %s)",
+            heating_start,
+            start_reason,
+            earliest,
+            latest,
+        )
 
         # Publish automation status
         self._publish_status()
@@ -607,6 +632,11 @@ class AutomationController:
                 f"{base}/estimated_daily_demand",
                 str(status["estimated_daily_demand_kwh"]),
             )
+        if status.get("heating_start_time"):
+            self.mqtt_client.publish(
+                f"{base}/heating_start_time",
+                status["heating_start_time"],
+            )
         if status.get("active_target_temp") is not None:
             self.mqtt_client.publish(
                 f"{base}/active_target_temp", str(status["active_target_temp"])
@@ -655,6 +685,7 @@ class AutomationController:
             "outdoor_temp_avg_24h": outdoor_temp_avg_24h,
             "weather_date": weather_date,  # Which day this average represents
             "estimated_daily_demand_kwh": estimated_demand,
+            "heating_start_time": self.last_heating_start_time,
             "active_target_temp": self.last_action.target_temp,
             "reason": self.last_action.reason,
             "db_snapshot_count": self.storage.get_snapshot_count(),
