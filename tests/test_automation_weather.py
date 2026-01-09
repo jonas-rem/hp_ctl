@@ -91,8 +91,9 @@ def test_fetch_weather_success(mock_get, mock_response):
     mock_get.assert_called_once()
     call_args = mock_get.call_args
     assert call_args[0][0] == "https://api.open-meteo.com/v1/forecast"
-    assert call_args[1]["params"]["latitude"] == "52.52"
-    assert call_args[1]["params"]["longitude"] == "13.41"
+    assert call_args[1]["params"]["latitude"] == 52.52
+    assert call_args[1]["params"]["longitude"] == 13.41
+    assert call_args[1]["params"]["past_days"] == 1
     assert call_args[1]["params"]["daily"] == "temperature_2m_mean"
 
 
@@ -226,17 +227,19 @@ def test_weather_client_stop_without_start():
 
 
 @patch("hp_ctl.automation.weather.requests.get")
-def test_fetch_weather_date_calculation(mock_get, mock_response):
-    """Test that fetch uses yesterday's date correctly."""
+def test_fetch_weather_params(mock_get, mock_response):
+    """Test that fetch uses correct parameters."""
     mock_get.return_value.json.return_value = mock_response
     mock_get.return_value.raise_for_status = MagicMock()
 
     client = WeatherAPIClient(latitude=52.52, longitude=13.41)
     client._fetch_weather()
 
-    # Verify the API was called with yesterday's date
+    # Verify the API was called with past_days=1
     call_args = mock_get.call_args[1]["params"]
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    assert call_args["start_date"] == yesterday
-    assert call_args["end_date"] == yesterday
+    assert call_args["latitude"] == 52.52
+    assert call_args["longitude"] == 13.41
+    assert call_args["past_days"] == 1
+    assert "start_date" not in call_args
+    assert "end_date" not in call_args

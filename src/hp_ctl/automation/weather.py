@@ -63,16 +63,13 @@ class WeatherAPIClient:
             return
 
         logger.info(
-            "Starting weather client (lat=%.2f, lon=%.2f, "
-            "fetches at midnight)",
+            "Starting weather client (lat=%.2f, lon=%.2f, fetches at midnight)",
             self.latitude,
             self.longitude,
         )
 
         self._stop_event.clear()
-        self._thread = Thread(
-            target=self._fetch_loop, daemon=True, name="Weather-Fetcher"
-        )
+        self._thread = Thread(target=self._fetch_loop, daemon=True, name="Weather-Fetcher")
         self._thread.start()
 
     def stop(self) -> None:
@@ -99,13 +96,39 @@ class WeatherAPIClient:
         Fetches immediately on startup, then schedules next fetch for midnight (00:00).
         """
         # Fetch immediately on startup
+        self._update_and_notify("startup")
+
+        # Continue fetching at midnight each day
+        while not self._stop_event.is_set():
+            s_to_midnight = self._get_s_to_midnight()
+
+            logger.debug(
+                "Next weather fetch in %.1f hours (at midnight)", s_to_midnight / 3600
+            )
+
+            # Wait until midnight (or stop event)
+            if self._stop_event.wait(timeout=s_to_midnight):
+                break  # Stop event was set
+
+            # Fetch at midnight
+            self._update_and_notify("scheduled")
+
+    def _get_s_to_midnight(self) -> float:
+        """Calculate seconds until next midnight (00:00)."""
+        now = datetime.now()
+        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        return (tomorrow - now).total_seconds()
+
+    def _update_and_notify(self, reason: str) -> None:
+        """Fetch weather data and notify callbacks."""
         try:
             weather_data = self._fetch_weather()
 
             if weather_data:
                 self._last_data = weather_data
                 logger.info(
-                    "Weather updated: %.1f°C (24h avg for %s)",
+                    "Weather updated (%s): %.1f°C (24h avg for %s)",
+                    reason,
                     weather_data.outdoor_temp_avg_24h,
                     weather_data.date,
                 )
@@ -115,51 +138,12 @@ class WeatherAPIClient:
                     self.on_data_callback(weather_data)
 
         except Exception as e:  # pylint: disable=broad-except
-            error_msg = f"Failed to fetch weather on startup: {e}"
+            error_msg = f"Failed to fetch weather ({reason}): {e}"
             logger.exception(error_msg)
 
             # Invoke error callback
             if self.on_error_callback:
                 self.on_error_callback(error_msg)
-
-        # Continue fetching at midnight each day
-        while not self._stop_event.is_set():
-            # Calculate seconds until next midnight
-            now = datetime.now()
-            tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-            seconds_until_midnight = (tomorrow - now).total_seconds()
-
-            logger.debug(
-                "Next weather fetch in %.1f hours (at midnight)", seconds_until_midnight / 3600
-            )
-
-            # Wait until midnight (or stop event)
-            if self._stop_event.wait(timeout=seconds_until_midnight):
-                break  # Stop event was set
-
-            # Fetch at midnight
-            try:
-                weather_data = self._fetch_weather()
-
-                if weather_data:
-                    self._last_data = weather_data
-                    logger.info(
-                        "Weather updated: %.1f°C (24h avg for %s)",
-                        weather_data.outdoor_temp_avg_24h,
-                        weather_data.date,
-                    )
-
-                    # Invoke callback
-                    if self.on_data_callback:
-                        self.on_data_callback(weather_data)
-
-            except Exception as e:  # pylint: disable=broad-except
-                error_msg = f"Failed to fetch weather: {e}"
-                logger.exception(error_msg)
-
-                # Invoke error callback
-                if self.on_error_callback:
-                    self.on_error_callback(error_msg)
 
     def _fetch_weather(self) -> Optional[WeatherData]:
         """Fetch 24-hour average temperature for yesterday from Open-Meteo API.
@@ -167,20 +151,15 @@ class WeatherAPIClient:
         Returns:
             WeatherData instance with yesterday's 24h average temp, or None on failure.
         """
-        # Calculate yesterday's date
-        yesterday = datetime.now() - timedelta(days=1)
-        yesterday_str = yesterday.strftime("%Y-%m-%d")
-
-        params: dict[str, str | float] = {
-            "latitude": str(self.latitude),
-            "longitude": str(self.longitude),
-            "start_date": yesterday_str,
-            "end_date": yesterday_str,
+        params: dict[str, str | int | float] = {
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "past_days": 1,
             "daily": "temperature_2m_mean",  # Daily mean temperature
             "timezone": "auto",
         }
 
-        logger.debug("Fetching 24h average temperature for %s", yesterday_str)
+        logger.debug("Fetching 24h average temperature for yesterday")
         response = requests.get(OPEN_METEO_API, params=params, timeout=10)
         response.raise_for_status()
 
@@ -193,14 +172,17 @@ class WeatherAPIClient:
 
         temp_values = data["daily"]["temperature_2m_mean"]
         if not temp_values or len(temp_values) == 0:
-            logger.warning("No temperature data available for %s", yesterday_str)
+            logger.warning("No temperature data available")
             return None
 
+        # When using past_days=1, the daily arrays contain [yesterday, today_so_far]
+        # or just [yesterday] depending on the API version/parameters.
+        # Actually, past_days=1 usually returns yesterday.
         outdoor_temp_avg = float(temp_values[0])
-        timestamp = datetime.now()
+        yesterday_str = data["daily"]["time"][0]
 
         return WeatherData(
-            timestamp=timestamp,
+            timestamp=datetime.now(),
             outdoor_temp_avg_24h=outdoor_temp_avg,
             date=yesterday_str,
         )

@@ -28,8 +28,8 @@ automation:
     # Fetches 24-hour average temperature from the previous day
     # Automatically fetches on startup and daily at midnight (00:00)
     # Get your coordinates from: https://open-meteo.com/
-    latitude: 52.52
-    longitude: 13.41
+    latitude: 48.94
+    longitude: 8.40
 
   # Mapping outdoor temperature to daily heat requirement
   # System uses linear interpolation between points
