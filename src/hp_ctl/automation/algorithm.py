@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Default values for heating start time calculation
 DEFAULT_LATEST_START = "13:00"  # Default latest start if DHW not configured
-COLD_THRESHOLD = 3.0  # °C - at or below this, start at earliest time
+COLD_THRESHOLD = 5.0  # °C - at or below this, start at earliest time
 WARM_THRESHOLD_OFFSET = 3.0  # °C below max temp in heat_demand_map
 
 

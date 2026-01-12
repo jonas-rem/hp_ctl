@@ -199,7 +199,7 @@ def test_calculate_heating_start_time_interpolation(algorithm_with_night_off):
     start_time, reason = algorithm_with_night_off.calculate_heating_start_time(8.5)
     assert "interpolated" in reason
 
-    assert start_time == "09:39"
+    assert start_time == "09:06"
 
 
 def test_calculate_heating_start_time_no_dhw():
