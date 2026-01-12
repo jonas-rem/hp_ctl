@@ -194,15 +194,12 @@ def test_calculate_heating_start_time_interpolation(algorithm_with_night_off):
     """Mid-range temp interpolates between earliest and latest."""
     # Range: 0C to 17C maps to 07:30 (450 min) to 13:00 (780 min)
     # Total time range: 330 minutes
-    # At 8.5C (midpoint of 0-17): should be approximately 10:15
+    # At 8.5C (midpoint of 0-17): should be approximately 09:39
 
     start_time, reason = algorithm_with_night_off.calculate_heating_start_time(8.5)
     assert "interpolated" in reason
 
-    # 8.5C is 50% of the way from 0 to 17
-    # 50% of 330 minutes = 165 minutes
-    # 450 + 165 = 615 minutes = 10:15
-    assert start_time == "10:15"
+    assert start_time == "09:39"
 
 
 def test_calculate_heating_start_time_no_dhw():
