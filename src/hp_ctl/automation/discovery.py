@@ -93,8 +93,8 @@ class AutomationDiscovery:
 
         # 2. Weather & Demand
         add_sensor(
-            "outdoor_temp_avg_24h",
-            "Outdoor Temperature (24h Avg)",
+            "outdoor_temp_forecast_24h",
+            "Outdoor Temperature (24h Forecast)",
             unit="°C",
             device_class="temperature",
             state_class="measurement",

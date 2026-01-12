@@ -384,7 +384,7 @@ class TestCommandSuppression:
             )
             # Mock weather data to avoid skipping control logic
             controller.weather_client.get_last_data = MagicMock()
-            controller.weather_client.get_last_data.return_value.outdoor_temp_avg_24h = 5.0
+            controller.weather_client.get_last_data.return_value.outdoor_temp_forecast_24h = 5.0
 
             yield controller
             controller.storage.close()

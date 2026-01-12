@@ -26,10 +26,10 @@ def test_automation_discovery_structure():
     assert mode_config["device"]["via_device"] == "test_hp"
 
     # Check Outdoor Temp Sensor
-    temp_topic = "homeassistant/sensor/test_hp_automation/outdoor_temp_avg_24h/config"
+    temp_topic = "homeassistant/sensor/test_hp_automation/outdoor_temp_forecast_24h/config"
     assert temp_topic in configs
     temp_config = configs[temp_topic]
-    assert temp_config["name"] == "Outdoor Temperature (24h Avg)"
+    assert temp_config["name"] == "Outdoor Temperature (24h Forecast)"
     assert temp_config["unit_of_measurement"] == "°C"
     assert temp_config["device_class"] == "temperature"
     assert temp_config["state_class"] == "measurement"

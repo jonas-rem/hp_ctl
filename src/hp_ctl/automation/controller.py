@@ -295,12 +295,12 @@ class AutomationController:
         """
         logger.info(
             "Weather data received: %.1f°C (24h avg for %s)",
-            weather_data.outdoor_temp_avg_24h,
+            weather_data.outdoor_temp_forecast_24h,
             weather_data.date,
         )
 
         # Update outdoor temp in current snapshot with the 24h average
-        self.current_snapshot.outdoor_temp = weather_data.outdoor_temp_avg_24h
+        self.current_snapshot.outdoor_temp = weather_data.outdoor_temp_forecast_24h
         self.last_weather_update = weather_data.timestamp
 
         # Clear error state if we were paused
@@ -312,7 +312,7 @@ class AutomationController:
         # Publish weather data to MQTT
         weather_topic = f"{self.device_id}/automation/weather"
         weather_payload = {
-            "outdoor_temp_avg_24h": weather_data.outdoor_temp_avg_24h,
+            "outdoor_temp_forecast_24h": weather_data.outdoor_temp_forecast_24h,
             "date": weather_data.date,
             "timestamp": weather_data.timestamp.isoformat(),
         }
@@ -320,13 +320,13 @@ class AutomationController:
 
         # Calculate estimated daily demand based on 24h average
         estimated_demand = get_heat_demand_for_temp(
-            self.heat_demand_map, weather_data.outdoor_temp_avg_24h
+            self.heat_demand_map, weather_data.outdoor_temp_forecast_24h
         )
         logger.debug("Estimated daily heat demand: %.1f kWh", estimated_demand)
 
         # Calculate heating start time based on heat budget
         heating_start, start_reason = self.algorithm.calculate_heating_start_time(
-            weather_data.outdoor_temp_avg_24h
+            weather_data.outdoor_temp_forecast_24h
         )
         self.last_heating_start_time = heating_start
         self.last_heating_start_reason = start_reason
@@ -515,7 +515,7 @@ class AutomationController:
 
         last_weather = self.weather_client.get_last_data()
         outdoor_avg = (
-            last_weather.outdoor_temp_avg_24h
+            last_weather.outdoor_temp_forecast_24h
             if last_weather
             else self.current_snapshot.outdoor_temp
         )
@@ -529,7 +529,7 @@ class AutomationController:
         # 2. Call algorithm
         action = self.algorithm.decide(
             current_time=now,
-            outdoor_temp_avg_24h=outdoor_avg,
+            outdoor_temp_forecast_24h=outdoor_avg,
             actual_heat_kwh_today=actual_heat,
             estimated_demand_kwh=demand,
             current_outlet_temp=self.current_snapshot.outlet_water_temp or 0.0,
@@ -621,9 +621,9 @@ class AutomationController:
         base = f"{self.device_id}/automation"
 
         # Weather & Demand
-        if status.get("outdoor_temp_avg_24h") is not None:
+        if status.get("outdoor_temp_forecast_24h") is not None:
             self.mqtt_client.publish(
-                f"{base}/outdoor_temp_avg_24h", str(status["outdoor_temp_avg_24h"])
+                f"{base}/outdoor_temp_forecast_24h", str(status["outdoor_temp_forecast_24h"])
             )
         if status.get("weather_date"):
             self.mqtt_client.publish(f"{base}/weather_date", status["weather_date"])
@@ -662,27 +662,29 @@ class AutomationController:
         daily_summary = self._get_cached_daily_summary()
 
         # Get yesterday's 24h average outdoor temp from weather data
-        outdoor_temp_avg_24h = None
+        outdoor_temp_forecast_24h = None
         weather_date = None
         last_weather = self.weather_client.get_last_data()
         if last_weather:
-            outdoor_temp_avg_24h = last_weather.outdoor_temp_avg_24h
+            outdoor_temp_forecast_24h = last_weather.outdoor_temp_forecast_24h
             weather_date = last_weather.date
         elif self.current_snapshot.outdoor_temp is not None:
             # Fallback to snapshot data if weather not yet fetched
-            outdoor_temp_avg_24h = self.current_snapshot.outdoor_temp
+            outdoor_temp_forecast_24h = self.current_snapshot.outdoor_temp
 
         # Calculate estimated demand if we have outdoor temp
         estimated_demand = None
-        if outdoor_temp_avg_24h is not None:
-            estimated_demand = get_heat_demand_for_temp(self.heat_demand_map, outdoor_temp_avg_24h)
+        if outdoor_temp_forecast_24h is not None:
+            estimated_demand = get_heat_demand_for_temp(
+                self.heat_demand_map, outdoor_temp_forecast_24h
+            )
 
         # Build status payload
         status: dict[str, Any] = {
             "mode": "automatic" if self.automatic_mode_enabled else "manual",
             "paused": self.automation_paused,
             "last_error": self.last_error,
-            "outdoor_temp_avg_24h": outdoor_temp_avg_24h,
+            "outdoor_temp_forecast_24h": outdoor_temp_forecast_24h,
             "weather_date": weather_date,  # Which day this average represents
             "estimated_daily_demand_kwh": estimated_demand,
             "heating_start_time": self.last_heating_start_time,

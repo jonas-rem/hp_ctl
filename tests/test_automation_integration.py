@@ -112,7 +112,7 @@ class TestAutomationIntegration:
         )
 
         # Should publish to individual topic (controller passes relative topic to MqttClient)
-        mock_mqtt.publish.assert_any_call("aquarea_k/automation/outdoor_temp_avg_24h", "7.5")
+        mock_mqtt.publish.assert_any_call("aquarea_k/automation/outdoor_temp_forecast_24h", "7.5")
 
         # Should also publish to status JSON
         status_calls = [

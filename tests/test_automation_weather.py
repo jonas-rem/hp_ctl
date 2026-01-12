@@ -14,12 +14,13 @@ from hp_ctl.automation.weather import WeatherAPIClient, WeatherData
 
 @pytest.fixture
 def mock_response():
-    """Create a mock Open-Meteo API response."""
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    """Create a mock Open-Meteo API response for forecast."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     return {
         "daily": {
-            "time": [yesterday],
-            "temperature_2m_mean": [5.2],
+            "time": [today, tomorrow],
+            "temperature_2m_mean": [4.0, 5.2],  # today, tomorrow
         }
     }
 
@@ -29,12 +30,12 @@ def test_weather_data_creation():
     now = datetime.now()
     data = WeatherData(
         timestamp=now,
-        outdoor_temp_avg_24h=5.2,
+        outdoor_temp_forecast_24h=5.2,
         date="2025-12-25",
     )
 
     assert data.timestamp == now
-    assert data.outdoor_temp_avg_24h == 5.2
+    assert data.outdoor_temp_forecast_24h == 5.2
     assert data.date == "2025-12-25"
     assert data.source == "open-meteo"
 
@@ -80,12 +81,12 @@ def test_fetch_weather_success(mock_get, mock_response):
     weather_data = client._fetch_weather()
 
     assert weather_data is not None
-    assert weather_data.outdoor_temp_avg_24h == 5.2
+    assert weather_data.outdoor_temp_forecast_24h == 5.2
     assert isinstance(weather_data.timestamp, datetime)
 
-    # Verify date is yesterday
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    assert weather_data.date == yesterday
+    # Verify date is tomorrow (forecast)
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    assert weather_data.date == tomorrow
 
     # Verify API call
     mock_get.assert_called_once()
@@ -93,7 +94,7 @@ def test_fetch_weather_success(mock_get, mock_response):
     assert call_args[0][0] == "https://api.open-meteo.com/v1/forecast"
     assert call_args[1]["params"]["latitude"] == 52.52
     assert call_args[1]["params"]["longitude"] == 13.41
-    assert call_args[1]["params"]["past_days"] == 1
+    assert call_args[1]["params"]["forecast_days"] == 2
     assert call_args[1]["params"]["daily"] == "temperature_2m_mean"
 
 
@@ -116,6 +117,23 @@ def test_fetch_weather_empty_values(mock_get):
         "daily": {
             "time": [],
             "temperature_2m_mean": [],
+        }
+    }
+    mock_get.return_value.raise_for_status = MagicMock()
+
+    client = WeatherAPIClient(latitude=52.52, longitude=13.41)
+    weather_data = client._fetch_weather()
+
+    assert weather_data is None
+
+
+@patch("hp_ctl.automation.weather.requests.get")
+def test_fetch_weather_insufficient_data(mock_get):
+    """Test weather fetch with only one day of data (need 2 for tomorrow)."""
+    mock_get.return_value.json.return_value = {
+        "daily": {
+            "time": ["2025-01-12"],
+            "temperature_2m_mean": [5.0],  # Only today, no tomorrow
         }
     }
     mock_get.return_value.raise_for_status = MagicMock()
@@ -162,12 +180,12 @@ def test_weather_client_start_stop(mock_get, mock_response):
     assert on_data.call_count >= 1
     weather_data = on_data.call_args[0][0]
     assert isinstance(weather_data, WeatherData)
-    assert weather_data.outdoor_temp_avg_24h == 5.2
+    assert weather_data.outdoor_temp_forecast_24h == 5.2
 
     # Verify last_data is set
     last_data = client.get_last_data()
     assert last_data is not None
-    assert last_data.outdoor_temp_avg_24h == 5.2
+    assert last_data.outdoor_temp_forecast_24h == 5.2
 
     # Stop client
     client.stop()
@@ -228,18 +246,19 @@ def test_weather_client_stop_without_start():
 
 @patch("hp_ctl.automation.weather.requests.get")
 def test_fetch_weather_params(mock_get, mock_response):
-    """Test that fetch uses correct parameters."""
+    """Test that fetch uses correct parameters for forecast."""
     mock_get.return_value.json.return_value = mock_response
     mock_get.return_value.raise_for_status = MagicMock()
 
     client = WeatherAPIClient(latitude=52.52, longitude=13.41)
     client._fetch_weather()
 
-    # Verify the API was called with past_days=1
+    # Verify the API was called with forecast_days=2 (today + tomorrow)
     call_args = mock_get.call_args[1]["params"]
 
     assert call_args["latitude"] == 52.52
     assert call_args["longitude"] == 13.41
-    assert call_args["past_days"] == 1
+    assert call_args["forecast_days"] == 2
+    assert "past_days" not in call_args
     assert "start_date" not in call_args
     assert "end_date" not in call_args

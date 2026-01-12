@@ -41,7 +41,7 @@ def test_kwh_bucket_logic(algorithm):
     # Demand met
     action = algorithm.decide(
         current_time=now,
-        outdoor_temp_avg_24h=5.0,
+        outdoor_temp_forecast_24h=5.0,
         actual_heat_kwh_today=35.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -64,7 +64,7 @@ def test_ramping_logic_low_delta(algorithm):
     # delta_t = 35 - 33 = 2.0 (<= min_delta_t 3.0)
     action = algorithm.decide(
         current_time=now,
-        outdoor_temp_avg_24h=5.0,
+        outdoor_temp_forecast_24h=5.0,
         actual_heat_kwh_today=10.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -87,7 +87,7 @@ def test_ramping_logic_high_delta(algorithm):
     # delta_t = 35 - 30 = 5.0 (> min_delta_t 3.0)
     action = algorithm.decide(
         current_time=now,
-        outdoor_temp_avg_24h=5.0,
+        outdoor_temp_forecast_24h=5.0,
         actual_heat_kwh_today=10.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -109,7 +109,7 @@ def test_dhw_trigger_window(algorithm):
 
     action = algorithm.decide(
         current_time=now,
-        outdoor_temp_avg_24h=5.0,
+        outdoor_temp_forecast_24h=5.0,
         actual_heat_kwh_today=10.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -132,7 +132,7 @@ def test_dhw_completion(algorithm):
 
     action = algorithm.decide(
         current_time=now,
-        outdoor_temp_avg_24h=5.0,
+        outdoor_temp_forecast_24h=5.0,
         actual_heat_kwh_today=10.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -268,7 +268,7 @@ def test_decide_delayed_start(algorithm_with_night_off):
 
     action = algorithm_with_night_off.decide(
         current_time=now,
-        outdoor_temp_avg_24h=10.0,  # Warm enough for delayed start
+        outdoor_temp_forecast_24h=10.0,  # Warm enough for delayed start
         actual_heat_kwh_today=0.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -292,7 +292,7 @@ def test_decide_past_delayed_start(algorithm_with_night_off):
 
     action = algorithm_with_night_off.decide(
         current_time=now,
-        outdoor_temp_avg_24h=10.0,
+        outdoor_temp_forecast_24h=10.0,
         actual_heat_kwh_today=0.0,
         estimated_demand_kwh=30.0,
         current_outlet_temp=35.0,
@@ -317,7 +317,7 @@ def test_decide_cold_day_no_delay(algorithm_with_night_off):
 
     action = algorithm_with_night_off.decide(
         current_time=now,
-        outdoor_temp_avg_24h=-5.0,  # Cold day
+        outdoor_temp_forecast_24h=-5.0,  # Cold day
         actual_heat_kwh_today=0.0,
         estimated_demand_kwh=50.0,
         current_outlet_temp=35.0,

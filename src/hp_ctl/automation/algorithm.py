@@ -85,7 +85,7 @@ class HeatingAlgorithm:
             # Overlaps midnight (e.g., 22:00 - 06:00)
             return now_time >= start or now_time <= end
 
-    def calculate_heating_start_time(self, outdoor_temp_avg_24h: float) -> tuple[str, str]:
+    def calculate_heating_start_time(self, outdoor_temp_forecast_24h: float) -> tuple[str, str]:
         """Calculate dynamic heating start time based on outdoor temperature.
 
         The heating start time is interpolated between:
@@ -97,7 +97,7 @@ class HeatingAlgorithm:
         - >= warm threshold (max temp in heat_demand_map - 3°C): Start at latest time
 
         Args:
-            outdoor_temp_avg_24h: 24h average outdoor temperature in °C.
+            outdoor_temp_forecast_24h: 24h average outdoor temperature in °C.
 
         Returns:
             Tuple of (start_time "HH:MM", reason string for logging).
@@ -121,15 +121,18 @@ class HeatingAlgorithm:
             warm_threshold = 17.0  # Fallback
 
         # Handle boundary cases
-        if outdoor_temp_avg_24h <= COLD_THRESHOLD:
-            return earliest_start, f"cold day ({outdoor_temp_avg_24h:.1f}C <= {COLD_THRESHOLD}C)"
+        if outdoor_temp_forecast_24h <= COLD_THRESHOLD:
+            return (
+                earliest_start,
+                f"cold day ({outdoor_temp_forecast_24h:.1f}C <= {COLD_THRESHOLD}C)",
+            )
 
-        if outdoor_temp_avg_24h >= warm_threshold:
-            return latest_start, f"warm day ({outdoor_temp_avg_24h:.1f}C >= {warm_threshold}C)"
+        if outdoor_temp_forecast_24h >= warm_threshold:
+            return latest_start, f"warm day ({outdoor_temp_forecast_24h:.1f}C >= {warm_threshold}C)"
 
         # Linear interpolation between thresholds
         temp_range = warm_threshold - COLD_THRESHOLD
-        temp_offset = outdoor_temp_avg_24h - COLD_THRESHOLD
+        temp_offset = outdoor_temp_forecast_24h - COLD_THRESHOLD
         fraction = temp_offset / temp_range  # 0.0 = cold, 1.0 = warm
 
         # Convert times to minutes, interpolate, convert back
@@ -138,7 +141,9 @@ class HeatingAlgorithm:
         target_mins = earliest_mins + fraction * (latest_mins - earliest_mins)
 
         start_time = _minutes_to_time_str(int(target_mins))
-        reason = f"interpolated ({outdoor_temp_avg_24h:.1f}C in {COLD_THRESHOLD}-{warm_threshold}C)"
+        reason = (
+            f"interpolated ({outdoor_temp_forecast_24h:.1f}C in {COLD_THRESHOLD}-{warm_threshold}C)"
+        )
 
         return start_time, reason
 
@@ -172,7 +177,7 @@ class HeatingAlgorithm:
     def decide(
         self,
         current_time: datetime,
-        outdoor_temp_avg_24h: float,
+        outdoor_temp_forecast_24h: float,
         actual_heat_kwh_today: float,
         estimated_demand_kwh: float,
         current_outlet_temp: float,
@@ -188,7 +193,7 @@ class HeatingAlgorithm:
 
         Args:
             current_time: Current datetime.
-            outdoor_temp_avg_24h: 24h average outdoor temperature.
+            outdoor_temp_forecast_24h: 24h average outdoor temperature.
             actual_heat_kwh_today: Actual heat generated today so far.
             estimated_demand_kwh: Calculated daily demand.
             current_outlet_temp: Current outlet water temperature.
@@ -208,7 +213,7 @@ class HeatingAlgorithm:
             return AutomationAction(hp_status="Off", reason="Night-off period active")
 
         # 2. Dynamic Start Time Check (morning delayed start)
-        heating_start, _ = self.calculate_heating_start_time(outdoor_temp_avg_24h)
+        heating_start, _ = self.calculate_heating_start_time(outdoor_temp_forecast_24h)
         if self.is_before_heating_start(current_time, heating_start):
             return AutomationAction(
                 hp_status="Off",

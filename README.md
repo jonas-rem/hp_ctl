@@ -296,8 +296,8 @@ The SQLite database is stored at `/var/lib/hp_ctl/automation.db`
 
 **Published by automation (plain values):**
 - `automation/mode` - Current mode ("automatic" or "manual")
-- `automation/outdoor_temp_avg_24h` - 24h average outdoor temp
-- `automation/weather_date` - Date for the weather average
+- `automation/outdoor_temp_forecast_24h` - Forecasted 24h average outdoor temp for tomorrow
+- `automation/weather_date` - Date for the weather forecast
 - `automation/estimated_daily_demand` - Estimated kWh needed today
 - `automation/today/total_heat_kwh` - Heat generated today (kWh)
 - `automation/today/total_consumption_kwh` - Energy consumed today (kWh)

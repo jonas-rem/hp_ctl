@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
 
-"""Weather API client using Open-Meteo service."""
+"""Weather API client using Open-Meteo service for forecast data."""
 
 import logging
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Open-Meteo API endpoint (historical data)
+# Open-Meteo API endpoint
 OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
 
 
@@ -22,8 +22,8 @@ class WeatherData:
     """Weather data from API."""
 
     timestamp: datetime
-    outdoor_temp_avg_24h: float  # °C - 24h average from previous day
-    date: str  # Date this average represents (YYYY-MM-DD)
+    outdoor_temp_forecast_24h: float  # °C - forecasted 24h average for tomorrow
+    date: str  # Date this forecast represents (YYYY-MM-DD)
     source: str = "open-meteo"
 
 
@@ -102,9 +102,7 @@ class WeatherAPIClient:
         while not self._stop_event.is_set():
             s_to_midnight = self._get_s_to_midnight()
 
-            logger.debug(
-                "Next weather fetch in %.1f hours (at midnight)", s_to_midnight / 3600
-            )
+            logger.debug("Next weather fetch in %.1f hours (at midnight)", s_to_midnight / 3600)
 
             # Wait until midnight (or stop event)
             if self._stop_event.wait(timeout=s_to_midnight):
@@ -127,9 +125,9 @@ class WeatherAPIClient:
             if weather_data:
                 self._last_data = weather_data
                 logger.info(
-                    "Weather updated (%s): %.1f°C (24h avg for %s)",
+                    "Weather updated (%s): %.1f°C (24h forecast for %s)",
                     reason,
-                    weather_data.outdoor_temp_avg_24h,
+                    weather_data.outdoor_temp_forecast_24h,
                     weather_data.date,
                 )
 
@@ -146,20 +144,20 @@ class WeatherAPIClient:
                 self.on_error_callback(error_msg)
 
     def _fetch_weather(self) -> Optional[WeatherData]:
-        """Fetch 24-hour average temperature for yesterday from Open-Meteo API.
+        """Fetch forecasted 24-hour average temperature for tomorrow from Open-Meteo API.
 
         Returns:
-            WeatherData instance with yesterday's 24h average temp, or None on failure.
+            WeatherData instance with tomorrow's 24h forecast temp, or None on failure.
         """
         params: dict[str, str | int | float] = {
             "latitude": self.latitude,
             "longitude": self.longitude,
-            "past_days": 1,
+            "forecast_days": 2,  # today + tomorrow
             "daily": "temperature_2m_mean",  # Daily mean temperature
             "timezone": "auto",
         }
 
-        logger.debug("Fetching 24h average temperature for yesterday")
+        logger.debug("Fetching 24h average temperature forecast for tomorrow")
         response = requests.get(OPEN_METEO_API, params=params, timeout=10)
         response.raise_for_status()
 
@@ -171,18 +169,16 @@ class WeatherAPIClient:
             return None
 
         temp_values = data["daily"]["temperature_2m_mean"]
-        if not temp_values or len(temp_values) == 0:
-            logger.warning("No temperature data available")
+        if not temp_values or len(temp_values) < 2:
+            logger.warning("Insufficient temperature data available")
             return None
 
-        # When using past_days=1, the daily arrays contain [yesterday, today_so_far]
-        # or just [yesterday] depending on the API version/parameters.
-        # Actually, past_days=1 usually returns yesterday.
-        outdoor_temp_avg = float(temp_values[0])
-        yesterday_str = data["daily"]["time"][0]
+        # forecast_days=2 returns [today, tomorrow] - we want tomorrow (index 1)
+        outdoor_temp_forecast = float(temp_values[1])
+        tomorrow_str = data["daily"]["time"][1]
 
         return WeatherData(
             timestamp=datetime.now(),
-            outdoor_temp_avg_24h=outdoor_temp_avg,
-            date=yesterday_str,
+            outdoor_temp_forecast_24h=outdoor_temp_forecast,
+            date=tomorrow_str,
         )
