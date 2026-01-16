@@ -22,7 +22,7 @@ class WeatherData:
     """Weather data from API."""
 
     timestamp: datetime
-    outdoor_temp_forecast_24h: float  # °C - forecasted 24h average for tomorrow
+    outdoor_temp_forecast_24h: float  # °C - forecasted 24h average for today
     date: str  # Date this forecast represents (YYYY-MM-DD)
     source: str = "open-meteo"
 
@@ -144,20 +144,22 @@ class WeatherAPIClient:
                 self.on_error_callback(error_msg)
 
     def _fetch_weather(self) -> Optional[WeatherData]:
-        """Fetch forecasted 24-hour average temperature for tomorrow from Open-Meteo API.
+        """Fetch forecasted 24-hour average temperature for today from Open-Meteo API.
+
+        Called at midnight, so "today" represents the next 24 hours.
 
         Returns:
-            WeatherData instance with tomorrow's 24h forecast temp, or None on failure.
+            WeatherData instance with today's 24h forecast temp, or None on failure.
         """
         params: dict[str, str | int | float] = {
             "latitude": self.latitude,
             "longitude": self.longitude,
-            "forecast_days": 2,  # today + tomorrow
+            "forecast_days": 1,  # today only
             "daily": "temperature_2m_mean",  # Daily mean temperature
             "timezone": "auto",
         }
 
-        logger.debug("Fetching 24h average temperature forecast for tomorrow")
+        logger.debug("Fetching 24h average temperature forecast for today")
         response = requests.get(OPEN_METEO_API, params=params, timeout=10)
         response.raise_for_status()
 
@@ -169,16 +171,16 @@ class WeatherAPIClient:
             return None
 
         temp_values = data["daily"]["temperature_2m_mean"]
-        if not temp_values or len(temp_values) < 2:
+        if not temp_values:
             logger.warning("Insufficient temperature data available")
             return None
 
-        # forecast_days=2 returns [today, tomorrow] - we want tomorrow (index 1)
-        outdoor_temp_forecast = float(temp_values[1])
-        tomorrow_str = data["daily"]["time"][1]
+        # forecast_days=1 returns [today] - at midnight this is the next 24 hours
+        outdoor_temp_forecast = float(temp_values[0])
+        today_str = data["daily"]["time"][0]
 
         return WeatherData(
             timestamp=datetime.now(),
             outdoor_temp_forecast_24h=outdoor_temp_forecast,
-            date=tomorrow_str,
+            date=today_str,
         )

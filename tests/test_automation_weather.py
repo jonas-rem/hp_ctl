@@ -4,7 +4,7 @@
 """Tests for automation weather module."""
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,11 +16,10 @@ from hp_ctl.automation.weather import WeatherAPIClient, WeatherData
 def mock_response():
     """Create a mock Open-Meteo API response for forecast."""
     today = datetime.now().strftime("%Y-%m-%d")
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     return {
         "daily": {
-            "time": [today, tomorrow],
-            "temperature_2m_mean": [4.0, 5.2],  # today, tomorrow
+            "time": [today],
+            "temperature_2m_mean": [5.2],  # today
         }
     }
 
@@ -84,9 +83,9 @@ def test_fetch_weather_success(mock_get, mock_response):
     assert weather_data.outdoor_temp_forecast_24h == 5.2
     assert isinstance(weather_data.timestamp, datetime)
 
-    # Verify date is tomorrow (forecast)
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    assert weather_data.date == tomorrow
+    # Verify date is today (forecast for next 24 hours)
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert weather_data.date == today
 
     # Verify API call
     mock_get.assert_called_once()
@@ -94,7 +93,7 @@ def test_fetch_weather_success(mock_get, mock_response):
     assert call_args[0][0] == "https://api.open-meteo.com/v1/forecast"
     assert call_args[1]["params"]["latitude"] == 52.52
     assert call_args[1]["params"]["longitude"] == 13.41
-    assert call_args[1]["params"]["forecast_days"] == 2
+    assert call_args[1]["params"]["forecast_days"] == 1
     assert call_args[1]["params"]["daily"] == "temperature_2m_mean"
 
 
@@ -129,11 +128,11 @@ def test_fetch_weather_empty_values(mock_get):
 
 @patch("hp_ctl.automation.weather.requests.get")
 def test_fetch_weather_insufficient_data(mock_get):
-    """Test weather fetch with only one day of data (need 2 for tomorrow)."""
+    """Test weather fetch with no temperature data."""
     mock_get.return_value.json.return_value = {
         "daily": {
-            "time": ["2025-01-12"],
-            "temperature_2m_mean": [5.0],  # Only today, no tomorrow
+            "time": [],
+            "temperature_2m_mean": [],  # No data at all
         }
     }
     mock_get.return_value.raise_for_status = MagicMock()
@@ -253,12 +252,12 @@ def test_fetch_weather_params(mock_get, mock_response):
     client = WeatherAPIClient(latitude=52.52, longitude=13.41)
     client._fetch_weather()
 
-    # Verify the API was called with forecast_days=2 (today + tomorrow)
+    # Verify the API was called with forecast_days=1 (today only)
     call_args = mock_get.call_args[1]["params"]
 
     assert call_args["latitude"] == 52.52
     assert call_args["longitude"] == 13.41
-    assert call_args["forecast_days"] == 2
+    assert call_args["forecast_days"] == 1
     assert "past_days" not in call_args
     assert "start_date" not in call_args
     assert "end_date" not in call_args
