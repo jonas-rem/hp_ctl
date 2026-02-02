@@ -493,6 +493,31 @@ class AutomationController:
             len(self.change_history[param_name]),
         )
 
+    def _clamp_temperature(self, temp: float, field_name: str) -> float:
+        """Clamp temperature to valid protocol range.
+
+        This is a safety net to ensure temperatures are within valid range
+        before encoding. Protocol limits from FieldSpec definitions:
+        - zone1_heat_target_temp: min=20.0, max=65.0
+        - dhw_target_temp: min=40.0, max=75.0
+
+        Args:
+            temp: Temperature value to clamp.
+            field_name: Name of the field (determines which limits to use).
+
+        Returns:
+            Clamped temperature value.
+        """
+        if field_name == "zone1_heat_target_temp":
+            min_val, max_val = 20.0, 65.0
+        elif field_name == "dhw_target_temp":
+            min_val, max_val = 40.0, 75.0
+        else:
+            # Unknown field - return as-is
+            return temp
+
+        return max(min_val, min(temp, max_val))
+
     def _control_loop(self) -> None:
         """Background loop for active heat pump control (runs every 1 min)."""
         logger.info("Automation control loop started (interval: 1 min)")
@@ -591,6 +616,29 @@ class AutomationController:
                     logger.info(
                         "Queued automation command: zone1_heat_target_temp = %s", action.target_temp
                     )
+
+        # Validate and clamp temperatures before sending (safety check)
+        if "zone1_heat_target_temp" in commands_to_send:
+            temp = commands_to_send["zone1_heat_target_temp"]
+            clamped_temp = self._clamp_temperature(temp, "zone1_heat_target_temp")
+            if clamped_temp != temp:
+                logger.warning(
+                    "Controller clamped zone1_heat_target_temp: %.1f°C → %.1f°C",
+                    temp,
+                    clamped_temp,
+                )
+                commands_to_send["zone1_heat_target_temp"] = clamped_temp
+
+        if "dhw_target_temp" in commands_to_send:
+            temp = commands_to_send["dhw_target_temp"]
+            clamped_temp = self._clamp_temperature(temp, "dhw_target_temp")
+            if clamped_temp != temp:
+                logger.warning(
+                    "Controller clamped dhw_target_temp: %.1f°C → %.1f°C",
+                    temp,
+                    clamped_temp,
+                )
+                commands_to_send["dhw_target_temp"] = clamped_temp
 
         # Send all commands in one batch if any
         if commands_to_send and self.command_callback:

@@ -13,8 +13,10 @@ log_level: INFO
 limits:
   dhw_target_temp:
     max: 52
+    min: 37
   zone1_heat_target_temp:
     max: 37
+    min: 25  # Minimum for morning startup (Panasonic protocol min: 20°C)
 
 # Automation configuration (optional)
 # Data collection always runs when this section is present.

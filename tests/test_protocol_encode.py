@@ -82,6 +82,20 @@ class TestEncode:
         with pytest.raises(ValueError, match="exceeds maximum"):
             STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"dhw_target_temp": 76.0}))
 
+    def test_zone1_heat_target_temp_below_minimum_rejected(self):
+        """Zone1 heat target temp below protocol minimum (20°C) is rejected"""
+        # Protocol minimum for zone1_heat_target_temp is 20.0°C
+        with pytest.raises(ValueError, match="below minimum"):
+            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_heat_target_temp": 19.0}))
+
+    def test_zone1_heat_target_temp_at_minimum_accepted(self):
+        """Zone1 heat target temp at protocol minimum (20°C) is accepted"""
+        # Protocol minimum for zone1_heat_target_temp is 20.0°C
+        msg = Message(packet_type=0x10, fields={"zone1_heat_target_temp": 20.0})
+        # Should not raise an exception
+        encoded = STANDARD_CODEC.encode(msg)
+        assert encoded[38] == 148  # 20 + 128
+
     def test_non_writable_field(self):
         """Attempting to write non-writable field raises ValueError"""
         with pytest.raises(ValueError, match="not writable"):

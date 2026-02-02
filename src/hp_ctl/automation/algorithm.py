@@ -15,6 +15,14 @@ DEFAULT_LATEST_START = "13:00"  # Default latest start if DHW not configured
 COLD_THRESHOLD = 5.0  # °C - at or below this, start at earliest time
 WARM_THRESHOLD_OFFSET = 3.0  # °C below max temp in heat_demand_map
 
+# Protocol absolute minimum temperatures (heat pump hard limits)
+PROTOCOL_MIN_HEAT_TEMP = 20.0  # °C - absolute minimum for zone1_heat_target_temp
+PROTOCOL_MIN_DHW_TEMP = 40.0  # °C - absolute minimum for dhw_target_temp
+
+# User configurable default minimums (can be overridden in config)
+DEFAULT_MIN_HEAT_TEMP = 25.0  # °C - default user minimum for zone1_heat_target_temp
+DEFAULT_MIN_DHW_TEMP = 37.0  # °C - default user minimum for dhw_target_temp
+
 
 def _time_str_to_minutes(time_str: str) -> int:
     """Convert "HH:MM" to minutes since midnight.
@@ -60,6 +68,25 @@ class HeatingAlgorithm:
     def __init__(self, config: dict) -> None:
         """Initialize algorithm with configuration."""
         self.config = config
+
+        # Get user-configured minimum temperatures from limits section
+        limits = config.get("limits", {})
+        heat_limits = limits.get("zone1_heat_target_temp", {})
+        dhw_limits = limits.get("dhw_target_temp", {})
+
+        # Use configured min or default, but never below protocol minimum
+        self.min_heat_temp = max(
+            heat_limits.get("min", DEFAULT_MIN_HEAT_TEMP),
+            PROTOCOL_MIN_HEAT_TEMP
+        )
+        self.min_dhw_temp = max(
+            dhw_limits.get("min", DEFAULT_MIN_DHW_TEMP),
+            PROTOCOL_MIN_DHW_TEMP
+        )
+
+        # Protocol maximums from FieldSpec definitions
+        self.protocol_max_heat = 65.0
+        self.protocol_max_dhw = 75.0
 
     def is_in_night_off_period(self, current_time: datetime) -> bool:
         """Check if current time is within the night-off period.
@@ -236,10 +263,15 @@ class HeatingAlgorithm:
 
             if trigger_start <= now_time <= trigger_end:
                 if "DHW" not in current_operating_mode:
+                    # Clamp DHW target temp to valid range
+                    dhw_target = dhw_config["target_temp"]
+                    dhw_target = max(dhw_target, self.min_dhw_temp)
+                    dhw_target = min(dhw_target, self.protocol_max_dhw)
+
                     return AutomationAction(
                         hp_status="On",
                         operating_mode="Heat+DHW",
-                        dhw_target_temp=dhw_config["target_temp"],
+                        dhw_target_temp=dhw_target,
                         reason=f"DHW trigger window ({start_time_str}-{trigger_end.strftime('%H:%M')})",
                     )
             # Switch back to Heat only if DHW is finished (valve is Room)
@@ -271,6 +303,20 @@ class HeatingAlgorithm:
         else:
             target_temp = zone1_actual_temp + 1.0
             reason_detail = f"delta_t ({delta_t:.1f}K) <= min ({min_delta_t}K)"
+
+        # Clamp target temperature to configured minimum and protocol maximum
+        original_target = target_temp
+        target_temp = max(target_temp, self.min_heat_temp)
+        target_temp = min(target_temp, self.protocol_max_heat)
+
+        if target_temp != original_target:
+            reason_detail += f" (clamped {original_target:.1f}°C → {target_temp:.1f}°C)"
+            logger.debug(
+                "Target temp clamped: %.1f°C → %.1f°C (min=%.1f°C)",
+                original_target,
+                target_temp,
+                self.min_heat_temp,
+            )
 
         return AutomationAction(
             hp_status="On",
