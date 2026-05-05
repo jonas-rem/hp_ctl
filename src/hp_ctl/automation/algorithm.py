@@ -274,13 +274,32 @@ class HeatingAlgorithm:
                         dhw_target_temp=dhw_target,
                         reason=f"DHW trigger window ({start_time_str}-{trigger_end.strftime('%H:%M')})",
                     )
-            # Switch back to Heat only if DHW is finished (valve is Room)
-            # and we are past the trigger window
-            elif "DHW" in current_operating_mode and three_way_valve == "Room":
-                return AutomationAction(
-                    operating_mode="Heat",
-                    reason="DHW finished",
-                )
+                else:
+                    # DHW already active within the trigger window.
+                    # Explicitly return here to prevent the demand check from
+                    # falling through and turning the HP off (warm days have
+                    # estimated_demand=0, so actual_heat(0) >= demand(0) → Off).
+                    return AutomationAction(
+                        hp_status="On",
+                        operating_mode="Heat+DHW",
+                        reason="DHW in progress",
+                    )
+            # Past the trigger window: keep HP on until the three-way valve
+            # returns to Room, then switch back to heating mode.
+            elif "DHW" in current_operating_mode:
+                if three_way_valve == "Room":
+                    return AutomationAction(
+                        operating_mode="Heat",
+                        reason="DHW finished",
+                    )
+                else:
+                    # Valve still in DHW position — tank not yet hot enough.
+                    # Keep HP running; do not fall through to the demand check.
+                    return AutomationAction(
+                        hp_status="On",
+                        operating_mode="Heat+DHW",
+                        reason="DHW in progress (post-window)",
+                    )
 
         # 4. Demand Check (Bucket Logic)
         if actual_heat_kwh_today >= estimated_demand_kwh:

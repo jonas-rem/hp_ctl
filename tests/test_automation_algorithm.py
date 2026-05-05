@@ -148,6 +148,66 @@ def test_dhw_completion(algorithm):
     assert "DHW finished" in action.reason
 
 
+def test_dhw_already_active_within_window_warm_day(algorithm):
+    """DHW active during trigger window on a warm day must keep HP on.
+
+    Regression test: on warm days estimated_demand=0 and actual_heat=0, so
+    0 >= 0 would satisfy the demand check and turn the HP off.  The DHW
+    block must return before reaching the demand check.
+    """
+    # 13:05 is inside the 13:00-13:10 window; HP is already in Heat+DHW
+    now = datetime.strptime("13:05", "%H:%M")
+
+    action = algorithm.decide(
+        current_time=now,
+        outdoor_temp_forecast_24h=20.0,  # warm day → estimated_demand = 0 kWh
+        actual_heat_kwh_today=0.0,       # HP was off all day (delayed start)
+        estimated_demand_kwh=0.0,
+        current_outlet_temp=35.0,
+        current_inlet_temp=30.0,
+        zone1_actual_temp=34.5,
+        current_hp_status="On",
+        current_operating_mode="Heat+DHW",  # already triggered on previous cycle
+        three_way_valve="DHW",              # tank still heating
+        heat_power_generation=3000.0,
+        heat_power_consumption=800.0,
+    )
+
+    assert action.hp_status == "On", "HP must stay on while DHW is in progress"
+    assert action.operating_mode == "Heat+DHW"
+    assert "DHW in progress" in action.reason
+
+
+def test_dhw_still_running_past_window_keeps_hp_on(algorithm):
+    """HP must stay on when DHW is still running after the 10-min trigger window.
+
+    Regression test: past 13:10 the trigger branch is not entered, but if the
+    three-way valve has not yet returned to Room the old elif only matched
+    'valve == Room', so control fell through to the demand check and could
+    turn the HP off mid-DHW.
+    """
+    now = datetime.strptime("13:15", "%H:%M")  # past the 13:00-13:10 window
+
+    action = algorithm.decide(
+        current_time=now,
+        outdoor_temp_forecast_24h=20.0,
+        actual_heat_kwh_today=0.0,
+        estimated_demand_kwh=0.0,
+        current_outlet_temp=40.0,
+        current_inlet_temp=35.0,
+        zone1_actual_temp=34.5,
+        current_hp_status="On",
+        current_operating_mode="Heat+DHW",
+        three_way_valve="DHW",  # tank still being heated
+        heat_power_generation=3000.0,
+        heat_power_consumption=800.0,
+    )
+
+    assert action.hp_status == "On", "HP must stay on until DHW tank is fully heated"
+    assert action.operating_mode == "Heat+DHW"
+    assert "post-window" in action.reason
+
+
 # --- Tests for dynamic heating start time ---
 
 
