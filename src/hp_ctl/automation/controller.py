@@ -99,6 +99,7 @@ class AutomationController:
         # Error state
         self.automation_paused = False
         self.last_error: Optional[str] = None
+        self._last_pause_log: Optional[datetime] = None
 
         # Heating start time (calculated when weather data arrives)
         self.last_heating_start_time: Optional[str] = None
@@ -349,20 +350,35 @@ class AutomationController:
         self._publish_status()
 
     def _on_weather_error(self, error_msg: str) -> None:
-        """Callback when weather API error occurs.
+        """Callback when weather API error occurs (all retries exhausted).
+
+        If no weather data has ever been fetched, automation is paused entirely.
+        If previous data exists, a warning is logged and automation continues
+        using the last known temperature — the error is not surfaced to MQTT.
 
         Args:
             error_msg: Error message description.
         """
-        logger.error("Weather API error: %s", error_msg)
+        last_data = self.weather_client.get_last_data()
 
-        # Pause automation
-        self.automation_paused = True
-        self.last_error = error_msg
+        if last_data is None:
+            # No data at all — cannot run safely, pause automation
+            logger.error("Weather API error (no fallback data available): %s", error_msg)
+            self.automation_paused = True
+            self.last_error = error_msg
 
-        # Publish error to MQTT
-        error_topic = f"{self.device_id}/automation/error"
-        self.mqtt_client.publish(error_topic, error_msg)
+            # Publish error to MQTT so HA surfaces it
+            error_topic = f"{self.device_id}/automation/error"
+            self.mqtt_client.publish(error_topic, error_msg)
+        else:
+            # Have previous data — continue with it and just warn
+            logger.warning(
+                "Weather refresh failed, reusing %s forecast (%.1f°C): %s",
+                last_data.date,
+                last_data.outdoor_temp_forecast_24h,
+                error_msg,
+            )
+            self.last_error = error_msg
 
         # Publish updated status
         self._publish_status()
@@ -524,6 +540,17 @@ class AutomationController:
 
         while not self._stop_event.wait(timeout=60):  # 1 minute
             if not self.automatic_mode_enabled or self.automation_paused:
+                if self.automation_paused:
+                    now = datetime.now()
+                    if (
+                        self._last_pause_log is None
+                        or (now - self._last_pause_log).total_seconds() >= 3600
+                    ):
+                        logger.warning(
+                            "Automation paused (no weather data available): %s",
+                            self.last_error,
+                        )
+                        self._last_pause_log = now
                 continue
 
             try:

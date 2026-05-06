@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 # Open-Meteo API endpoint
 OPEN_METEO_API = "https://api.open-meteo.com/v1/forecast"
 
+# Scheduled daily fetch time (00:15 to avoid API load at midnight)
+FETCH_HOUR = 0
+FETCH_MINUTE = 15
+
+# Retry configuration for failed scheduled fetches
+MAX_RETRY_ATTEMPTS = 3
+RETRY_INTERVAL_S = 30 * 60  # 30 minutes between retries
+
 
 @dataclass
 class WeatherData:
@@ -39,13 +47,15 @@ class WeatherAPIClient:
     ) -> None:
         """Initialize weather API client.
 
-        Fetches 24h average temperature on startup and at midnight (00:00) daily.
+        Fetches 24h average temperature on startup and at 00:15 daily.
+        On failure, retries up to MAX_RETRY_ATTEMPTS times at RETRY_INTERVAL_S
+        intervals before invoking the error callback.
 
         Args:
             latitude: Location latitude.
             longitude: Location longitude.
             on_data: Callback invoked when new weather data is received.
-            on_error: Callback invoked when API error occurs.
+            on_error: Callback invoked when all fetch attempts are exhausted.
         """
         self.latitude = latitude
         self.longitude = longitude
@@ -63,9 +73,11 @@ class WeatherAPIClient:
             return
 
         logger.info(
-            "Starting weather client (lat=%.2f, lon=%.2f, fetches at midnight)",
+            "Starting weather client (lat=%.2f, lon=%.2f, fetches at %02d:%02d)",
             self.latitude,
             self.longitude,
+            FETCH_HOUR,
+            FETCH_MINUTE,
         )
 
         self._stop_event.clear()
@@ -93,32 +105,79 @@ class WeatherAPIClient:
     def _fetch_loop(self) -> None:
         """Background thread loop for periodic weather fetching.
 
-        Fetches immediately on startup, then schedules next fetch for midnight (00:00).
+        Fetches immediately on startup, then schedules next fetch for 00:15.
+        On failure, retries up to MAX_RETRY_ATTEMPTS times before invoking
+        the error callback.
         """
-        # Fetch immediately on startup
-        self._update_and_notify("startup")
+        # Fetch immediately on startup; notify error callback if it fails
+        # (no retries on startup — controller will pause if no data available)
+        success = self._update_and_notify("startup")
+        if not success and self.on_error_callback:
+            self.on_error_callback("Weather fetch failed on startup")
 
-        # Continue fetching at midnight each day
+        # Continue fetching at 00:15 each day
         while not self._stop_event.is_set():
-            s_to_midnight = self._get_s_to_midnight()
+            s_to_next = self._get_s_to_scheduled_fetch()
 
-            logger.debug("Next weather fetch in %.1f hours (at midnight)", s_to_midnight / 3600)
+            logger.debug(
+                "Next weather fetch in %.1f hours (at %02d:%02d)",
+                s_to_next / 3600,
+                FETCH_HOUR,
+                FETCH_MINUTE,
+            )
 
-            # Wait until midnight (or stop event)
-            if self._stop_event.wait(timeout=s_to_midnight):
+            # Wait until scheduled time (or stop event)
+            if self._stop_event.wait(timeout=s_to_next):
                 break  # Stop event was set
 
-            # Fetch at midnight
-            self._update_and_notify("scheduled")
+            # First attempt at scheduled time
+            success = self._update_and_notify("scheduled")
 
-    def _get_s_to_midnight(self) -> float:
-        """Calculate seconds until next midnight (00:00)."""
+            # On failure, retry with increasing attempt count
+            attempt = 0
+            while not success and attempt < MAX_RETRY_ATTEMPTS:
+                attempt += 1
+                logger.warning(
+                    "Scheduled weather fetch failed, retrying in %.0f min (attempt %d/%d)",
+                    RETRY_INTERVAL_S / 60,
+                    attempt,
+                    MAX_RETRY_ATTEMPTS,
+                )
+                if self._stop_event.wait(timeout=RETRY_INTERVAL_S):
+                    return  # Stop event was set during retry wait
+
+                success = self._update_and_notify(f"retry-{attempt}")
+
+            if not success:
+                # All retries exhausted — invoke error callback once
+                error_msg = (
+                    f"Weather fetch failed after {MAX_RETRY_ATTEMPTS + 1} attempts "
+                    f"(scheduled + {MAX_RETRY_ATTEMPTS} retries)"
+                )
+                logger.error(error_msg)
+                if self.on_error_callback:
+                    self.on_error_callback(error_msg)
+
+    def _get_s_to_scheduled_fetch(self) -> float:
+        """Calculate seconds until next scheduled fetch at FETCH_HOUR:FETCH_MINUTE."""
         now = datetime.now()
-        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        return (tomorrow - now).total_seconds()
+        next_fetch = now.replace(
+            hour=FETCH_HOUR, minute=FETCH_MINUTE, second=0, microsecond=0
+        )
+        if next_fetch <= now:
+            next_fetch += timedelta(days=1)
+        return (next_fetch - now).total_seconds()
 
-    def _update_and_notify(self, reason: str) -> None:
-        """Fetch weather data and notify callbacks."""
+    def _update_and_notify(self, reason: str) -> bool:
+        """Fetch weather data and notify the data callback on success.
+
+        Args:
+            reason: Human-readable reason string for logging (e.g. "startup", "scheduled").
+
+        Returns:
+            True if data was successfully fetched and the callback invoked,
+            False on any error (exception is logged but not re-raised).
+        """
         try:
             weather_data = self._fetch_weather()
 
@@ -135,18 +194,18 @@ class WeatherAPIClient:
                 if self.on_data_callback:
                     self.on_data_callback(weather_data)
 
-        except Exception as e:  # pylint: disable=broad-except
-            error_msg = f"Failed to fetch weather ({reason}): {e}"
-            logger.exception(error_msg)
+                return True
 
-            # Invoke error callback
-            if self.on_error_callback:
-                self.on_error_callback(error_msg)
+            return False
+
+        except Exception as e:  # pylint: disable=broad-except
+            logger.exception("Failed to fetch weather (%s): %s", reason, e)
+            return False
 
     def _fetch_weather(self) -> Optional[WeatherData]:
         """Fetch forecasted 24-hour average temperature for today from Open-Meteo API.
 
-        Called at midnight, so "today" represents the next 24 hours.
+        Called at 00:15, so "today" represents the next 24 hours.
 
         Returns:
             WeatherData instance with today's 24h forecast temp, or None on failure.
@@ -175,7 +234,7 @@ class WeatherAPIClient:
             logger.warning("Insufficient temperature data available")
             return None
 
-        # forecast_days=1 returns [today] - at midnight this is the next 24 hours
+        # forecast_days=1 returns [today] - at 00:15 this is the next 24 hours
         outdoor_temp_forecast = float(temp_values[0])
         today_str = data["daily"]["time"][0]
 

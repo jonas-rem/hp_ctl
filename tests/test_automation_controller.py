@@ -478,3 +478,115 @@ class TestCommandSuppression:
         assert controller.command_callback.call_count == 1
         expected_batch = {"operating_mode": "Heat+DHW", "zone1_heat_target_temp": 35.0}
         controller.command_callback.assert_called_with(expected_batch)
+
+
+class TestWeatherErrorFallback:
+    """Tests for weather error handling and fallback behaviour."""
+
+    @pytest.fixture
+    def controller_for_weather(self, temp_automation_config, mock_mqtt_client, mock_ha_mapper):
+        """Controller with a real (but mocked-out) WeatherAPIClient."""
+        with patch("hp_ctl.automation.controller.WeatherAPIClient"):
+            ctrl = AutomationController(
+                config=temp_automation_config,
+                mqtt_client=mock_mqtt_client,
+                ha_mapper=mock_ha_mapper,
+            )
+            yield ctrl
+            ctrl.storage.close()
+
+    def test_weather_error_pauses_when_no_previous_data(self, controller_for_weather):
+        """Automation must be paused when an error occurs with no previous weather data."""
+        ctrl = controller_for_weather
+
+        # Ensure no previous data
+        ctrl.weather_client.get_last_data = MagicMock(return_value=None)
+        assert not ctrl.automation_paused
+
+        ctrl._on_weather_error("timeout after 10s")
+
+        assert ctrl.automation_paused is True
+        assert ctrl.last_error == "timeout after 10s"
+
+    def test_weather_error_publishes_mqtt_when_no_previous_data(self, controller_for_weather):
+        """MQTT error topic must be published when pausing due to missing weather data."""
+        ctrl = controller_for_weather
+        ctrl.weather_client.get_last_data = MagicMock(return_value=None)
+
+        ctrl._on_weather_error("no data error")
+
+        # Check that the error was published to MQTT
+        published_topics = [
+            call_args[0][0] for call_args in ctrl.mqtt_client.publish.call_args_list
+        ]
+        assert any("error" in t for t in published_topics)
+
+    def test_weather_error_keeps_running_with_previous_data(self, controller_for_weather):
+        """Automation must NOT pause when a refresh error occurs if previous data exists."""
+        from datetime import datetime
+
+        from hp_ctl.automation.weather import WeatherData
+
+        ctrl = controller_for_weather
+
+        previous = WeatherData(
+            timestamp=datetime.now(),
+            outdoor_temp_forecast_24h=13.8,
+            date="2026-05-05",
+        )
+        ctrl.weather_client.get_last_data = MagicMock(return_value=previous)
+        assert not ctrl.automation_paused
+
+        ctrl._on_weather_error("read timeout")
+
+        # Must NOT pause
+        assert ctrl.automation_paused is False
+        # Error is still recorded for status reporting
+        assert ctrl.last_error == "read timeout"
+
+    def test_weather_error_does_not_publish_mqtt_error_with_previous_data(
+        self, controller_for_weather
+    ):
+        """MQTT error topic must NOT be published when falling back to previous data."""
+        from datetime import datetime
+
+        from hp_ctl.automation.weather import WeatherData
+
+        ctrl = controller_for_weather
+        previous = WeatherData(
+            timestamp=datetime.now(),
+            outdoor_temp_forecast_24h=13.8,
+            date="2026-05-05",
+        )
+        ctrl.weather_client.get_last_data = MagicMock(return_value=previous)
+        ctrl.mqtt_client.publish.reset_mock()
+
+        ctrl._on_weather_error("read timeout")
+
+        published_topics = [
+            call_args[0][0] for call_args in ctrl.mqtt_client.publish.call_args_list
+        ]
+        assert not any("error" in t for t in published_topics)
+
+    def test_weather_success_clears_error_state(self, controller_for_weather):
+        """A successful weather update must clear automation_paused and last_error."""
+        from datetime import datetime
+
+        from hp_ctl.automation.weather import WeatherData
+
+        ctrl = controller_for_weather
+        # Simulate previous pause (no-data scenario)
+        ctrl.automation_paused = True
+        ctrl.last_error = "some previous error"
+
+        new_data = WeatherData(
+            timestamp=datetime.now(),
+            outdoor_temp_forecast_24h=10.0,
+            date="2026-05-06",
+        )
+        # Ensure _publish_status can resolve weather data via the mock
+        ctrl.weather_client.get_last_data = MagicMock(return_value=new_data)
+        ctrl._on_weather_data(new_data)
+
+        assert ctrl.automation_paused is False
+        assert ctrl.last_error is None
