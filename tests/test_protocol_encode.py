@@ -43,6 +43,18 @@ class TestEncode:
         decoded = STANDARD_CODEC.decode(encoded, 0x10)
         assert decoded.fields["zone1_heat_target_temp"] == original_value
 
+    def test_roundtrip_zone1_cool_temp(self):
+        """Zone 1 cool target temperature survives round-trip"""
+        original_value = 19.0
+        msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": original_value})
+
+        encoded = STANDARD_CODEC.encode(msg)
+        # Check it was written to byte 39
+        assert encoded[39] == 147  # 19 + 128
+
+        decoded = STANDARD_CODEC.decode(encoded, 0x10)
+        assert decoded.fields["zone1_cool_target_temp"] == original_value
+
     def test_encode_quiet_mode(self):
         """Quiet mode is correctly encoded to bit field positions"""
         # Level 2 -> inverse returns 11 (0b01011)
@@ -95,6 +107,24 @@ class TestEncode:
         # Should not raise an exception
         encoded = STANDARD_CODEC.encode(msg)
         assert encoded[38] == 148  # 20 + 128
+
+    def test_zone1_cool_target_temp_below_safe_minimum_rejected(self):
+        """Zone1 cool target temp below safe minimum (17°C) is rejected"""
+        with pytest.raises(ValueError, match="below minimum"):
+            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_cool_target_temp": 16.0}))
+
+    def test_zone1_cool_target_temp_above_safe_maximum_rejected(self):
+        """Zone1 cool target temp above safe maximum (21°C) is rejected"""
+        with pytest.raises(ValueError, match="exceeds maximum"):
+            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_cool_target_temp": 22.0}))
+
+    def test_zone1_cool_target_temp_safe_limits_accepted(self):
+        """Zone1 cool target temp safe range endpoints are accepted"""
+        min_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 17.0})
+        max_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 21.0})
+
+        assert STANDARD_CODEC.encode(min_msg)[39] == 145  # 17 + 128
+        assert STANDARD_CODEC.encode(max_msg)[39] == 149  # 21 + 128
 
     def test_non_writable_field(self):
         """Attempting to write non-writable field raises ValueError"""

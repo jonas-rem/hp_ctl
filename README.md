@@ -60,11 +60,14 @@ limits:
     max: 60  # °C (protocol allows up to 75°C)
   zone1_heat_target_temp:
     max: 50  # °C (protocol allows up to 65°C)
+  zone1_cool_target_temp:
+    max: 21  # °C (safe range is 17-21°C)
 ```
 
 **Available writable fields:**
 - `dhw_target_temp` - Domestic Hot Water target temperature (40-75°C)
 - `zone1_heat_target_temp` - Zone 1 heating target temperature (20-65°C)
+- `zone1_cool_target_temp` - Zone 1 cooling target temperature (17-21°C)
 - `quiet_mode` - Quiet mode level (0-3)
 - `operating_mode` - Operating mode (0-6)
 - `hp_status` - Heat pump on/off status (0-1)
@@ -128,7 +131,8 @@ Discovery**.
     - **Climate/Switch:** `hp_status` (On/Off)
     - **Select:** `operating_mode` (Heat, Cool, DHW, etc.), `quiet_mode`
       (Level 1-3)
-    - **Number:** `dhw_target_temp`, `zone1_heat_target_temp`
+    - **Number:** `dhw_target_temp`, `zone1_heat_target_temp`,
+      `zone1_cool_target_temp`
 
 **No manual configuration in Home Assistant is required.** Just ensure the MQTT
 integration is set up and "Enable Discovery" is checked (this is the default).

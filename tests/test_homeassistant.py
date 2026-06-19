@@ -81,6 +81,14 @@ def test_writable_discovery(mapper):
     assert dhw_config["max"] == 75.0
     assert "command_topic" in dhw_config
 
+    # Check number entity (zone1_cool_target_temp)
+    cool_topic = "homeassistant/number/test_aquarea/zone1_cool_target_temp/config"
+    assert cool_topic in configs
+    cool_config = configs[cool_topic]
+    assert cool_config["min"] == 17.0
+    assert cool_config["max"] == 21.0
+    assert "command_topic" in cool_config
+
     # Check enum entity (operating_mode)
     mode_topic = "homeassistant/select/test_aquarea/operating_mode/config"
     assert mode_topic in configs

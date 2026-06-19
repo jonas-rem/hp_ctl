@@ -31,6 +31,7 @@ test_cases:
       compressor_frequency: 88
       dhw_target_temp: 50
       zone1_heat_target_temp: 0
+      zone1_cool_target_temp: 15
       zone1_target_temp: 28
       inlet_water_temp: 43
       pump_flow_rate: 11.10546875
@@ -127,6 +128,5 @@ test_cases:
       checksum: ""
     should_raise: ValueError
     error_message: "Invalid checksum"
-
 
 
