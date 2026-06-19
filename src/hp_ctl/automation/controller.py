@@ -132,6 +132,8 @@ class AutomationController:
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/outdoor_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/heat_power_generation",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/heat_power_consumption",
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/cool_power_generation",
+            f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/cool_power_consumption",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/inlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/outlet_water_temp",
             f"{self.ha_mapper.topic_prefix}/{self.device_id}/state/zone1_actual_temp",
@@ -242,6 +244,10 @@ class AutomationController:
                 self.current_snapshot.heat_power_generation = float(payload)
             elif field_name == "heat_power_consumption":
                 self.current_snapshot.heat_power_consumption = float(payload)
+            elif field_name == "cool_power_generation":
+                self.current_snapshot.cool_power_generation = float(payload)
+            elif field_name == "cool_power_consumption":
+                self.current_snapshot.cool_power_consumption = float(payload)
             elif field_name == "inlet_water_temp":
                 self.current_snapshot.inlet_water_temp = float(payload)
             elif field_name == "outlet_water_temp":
@@ -419,6 +425,8 @@ class AutomationController:
             curr.outdoor_temp != last.outdoor_temp
             or curr.heat_power_generation != last.heat_power_generation
             or curr.heat_power_consumption != last.heat_power_consumption
+            or curr.cool_power_generation != last.cool_power_generation
+            or curr.cool_power_consumption != last.cool_power_consumption
             or curr.inlet_water_temp != last.inlet_water_temp
             or curr.outlet_water_temp != last.outlet_water_temp
             or curr.zone1_actual_temp != last.zone1_actual_temp
@@ -724,6 +732,7 @@ class AutomationController:
             today = status["today"]
             for key in [
                 "total_heat_kwh",
+                "total_cool_kwh",
                 "total_consumption_kwh",
                 "avg_cop",
                 "runtime_hours",
@@ -775,6 +784,7 @@ class AutomationController:
         if daily_summary:
             status["today"] = {
                 "total_heat_kwh": round(daily_summary.total_heat_kwh, 2),
+                "total_cool_kwh": round(daily_summary.total_cool_kwh, 2),
                 "total_consumption_kwh": round(daily_summary.total_consumption_kwh, 2),
                 "avg_cop": round(daily_summary.avg_cop, 2),
                 "runtime_hours": round(daily_summary.runtime_hours, 2),
@@ -809,6 +819,7 @@ class AutomationController:
         summary_payload = {
             "date": summary.date,
             "total_heat_kwh": round(summary.total_heat_kwh, 2),
+            "total_cool_kwh": round(summary.total_cool_kwh, 2),
             "total_consumption_kwh": round(summary.total_consumption_kwh, 2),
             "avg_cop": round(summary.avg_cop, 2),
             "avg_outdoor_temp": round(summary.avg_outdoor_temp, 1),

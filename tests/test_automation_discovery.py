@@ -11,8 +11,8 @@ def test_automation_discovery_structure():
     discovery = AutomationDiscovery(device_id="test_hp", device_name="Test HP")
     configs = discovery.get_discovery_configs()
 
-    # Should have 11 entities (1 select + 10 sensors including heating_start_time)
-    assert len(configs) == 11
+    # Should have 12 entities (1 select + 11 sensors including heating_start_time)
+    assert len(configs) == 12
 
     # Check Mode Select
     mode_topic = "homeassistant/select/test_hp_automation/mode/config"
@@ -42,6 +42,14 @@ def test_automation_discovery_structure():
     assert energy_config["unit_of_measurement"] == "kWh"
     assert energy_config["state_topic"] == "hp_ctl/test_hp/automation/today/total_heat_kwh"
     assert energy_config["state_class"] == "total_increasing"
+
+    cool_energy_topic = "homeassistant/sensor/test_hp_automation/today_total_cool_kwh/config"
+    assert cool_energy_topic in configs
+    cool_energy_config = configs[cool_energy_topic]
+    assert cool_energy_config["name"] == "Total Cool Energy Today"
+    assert cool_energy_config["unit_of_measurement"] == "kWh"
+    assert cool_energy_config["state_topic"] == "hp_ctl/test_hp/automation/today/total_cool_kwh"
+    assert cool_energy_config["state_class"] == "total_increasing"
 
 
 def test_automation_discovery_unique_ids():

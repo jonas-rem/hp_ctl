@@ -35,7 +35,7 @@ def test_database_initialization(temp_db):
     # Check schema version
     cursor.execute("SELECT version FROM schema_version")
     version = cursor.fetchone()[0]
-    assert version == 2
+    assert version == 3
 
 
 def test_insert_and_retrieve_snapshot(temp_db):
@@ -47,6 +47,8 @@ def test_insert_and_retrieve_snapshot(temp_db):
         outdoor_temp=5.5,
         heat_power_generation=3000.0,
         heat_power_consumption=1000.0,
+        cool_power_generation=2500.0,
+        cool_power_consumption=900.0,
         inlet_water_temp=35.0,
         outlet_water_temp=40.0,
         zone1_actual_temp=38.0,
@@ -67,6 +69,8 @@ def test_insert_and_retrieve_snapshot(temp_db):
     assert retrieved.timestamp == timestamp
     assert retrieved.outdoor_temp == 5.5
     assert retrieved.heat_power_generation == 3000.0
+    assert retrieved.cool_power_generation == 2500.0
+    assert retrieved.cool_power_consumption == 900.0
     assert retrieved.zone1_actual_temp == 38.0
 
 
@@ -108,6 +112,33 @@ def test_daily_summary_calculation(temp_db):
 
     # Check runtime (approximately 1 hour)
     assert 0.9 < summary.runtime_hours < 1.1
+
+
+def test_daily_summary_includes_cooling_energy(temp_db):
+    """Test daily summary calculation includes cooling generation and consumption."""
+    base_time = datetime(2025, 7, 26, 0, 0, 0)
+
+    # Simulate cooling at constant power for 1 hour.
+    # Cooling generation: 2500 W, Consumption: 1000 W, COP = 2.5
+    for i in range(13):
+        timestamp = base_time + timedelta(minutes=i * 5)
+        snapshot = HeatPumpSnapshot(
+            timestamp=timestamp,
+            outdoor_temp=28.0,
+            cool_power_generation=2500.0,
+            cool_power_consumption=1000.0,
+            hp_status="On",
+            operating_mode="Cool",
+        )
+        temp_db.insert_snapshot(snapshot)
+
+    summary = temp_db.get_daily_summary(base_time)
+
+    assert summary is not None
+    assert summary.total_heat_kwh == 0.0
+    assert 2.4 < summary.total_cool_kwh < 2.6
+    assert 0.9 < summary.total_consumption_kwh < 1.1
+    assert 2.4 < summary.avg_cop < 2.6
 
 
 def test_cleanup_old_data(temp_db):
@@ -161,6 +192,8 @@ def test_schema_has_all_required_columns(temp_db):
         "outdoor_temp",
         "heat_power_generation",
         "heat_power_consumption",
+        "cool_power_generation",
+        "cool_power_consumption",
         "inlet_water_temp",
         "outlet_water_temp",
         "hp_status",

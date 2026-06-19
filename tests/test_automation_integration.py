@@ -71,8 +71,8 @@ class TestAutomationIntegration:
             or "homeassistant/select/aquarea_k_automation" in str(call)
         ]
 
-        # We expect 11 entities (1 select + 10 sensors including heating_start_time)
-        assert len(discovery_calls) == 11
+        # We expect 12 entities (1 select + 11 sensors including cooling energy)
+        assert len(discovery_calls) == 12
 
         # Check specific entity
         mode_discovery = [c for c in discovery_calls if "mode/config" in str(c)]

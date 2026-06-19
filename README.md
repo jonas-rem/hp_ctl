@@ -248,7 +248,7 @@ at runtime via MQTT/Home Assistant.
 
 - **Weather Integration:** Fetches 24-hour average outdoor temperature
   from previous day via Open-Meteo API (free, no API key, once/day)
-- **Energy Tracking:** Continuous logging of heat generation and
+- **Energy Tracking:** Continuous logging of heat/cool generation and
   electrical consumption
 - **COP Calculation:** Automatic calculation of daily coefficient of
   performance
@@ -304,6 +304,7 @@ The SQLite database is stored at `/var/lib/hp_ctl/automation.db`
 - `automation/weather_date` - Date for the weather forecast
 - `automation/estimated_daily_demand` - Estimated kWh needed today
 - `automation/today/total_heat_kwh` - Heat generated today (kWh)
+- `automation/today/total_cool_kwh` - Cool energy generated today (kWh)
 - `automation/today/total_consumption_kwh` - Energy consumed today (kWh)
 - `automation/today/avg_cop` - Average COP today
 - `automation/today/runtime_hours` - Heat pump runtime today (h)
@@ -322,7 +323,7 @@ All topics are prefixed with `hp_ctl/{device_id}/`. Use
 ### How It Works
 
 1. **Data Collection:** Every UART message from the heat pump is
-   stored in SQLite, including heat power generation, electrical
+   stored in SQLite, including heat/cool power generation, electrical
    consumption, and temperatures.
 
 2. **Weather Updates:** 24-hour average outdoor temperature from the
@@ -337,7 +338,7 @@ All topics are prefixed with `hp_ctl/{device_id}/`. Use
    trapezoidal integration of instantaneous power readings.
 
 4. **COP Calculation:** Average coefficient of performance is
-   computed as: `COP = Heat Energy (kWh) / Electrical Energy (kWh)`
+   computed as: `COP = (Heat Energy + Cool Energy) / Electrical Energy`
 
 5. **Automatic Cleanup:** Data older than `retention_days` is
    automatically deleted to prevent unbounded database growth.
@@ -350,7 +351,7 @@ Automation"**.
 
 Key entities include:
 - **Mode:** Select entity to toggle between Manual and Automatic mode.
-- **Energy Sensors:** Real-time running totals for heat generation,
+- **Energy Sensors:** Real-time running totals for heat/cool generation,
   consumption, COP, and runtime.
 - **Weather:** 24h average outdoor temperature from the previous day.
 - **Demand:** Estimated daily heat demand based on configured mapping.

@@ -132,6 +132,14 @@ class AutomationDiscovery:
             topic_path="today/total_heat_kwh",
         )
         add_sensor(
+            "today/total_cool_kwh",
+            "Total Cool Energy Today",
+            unit="kWh",
+            device_class="energy",
+            state_class="total_increasing",
+            topic_path="today/total_cool_kwh",
+        )
+        add_sensor(
             "today/total_consumption_kwh",
             "Total Consumption Today",
             unit="kWh",

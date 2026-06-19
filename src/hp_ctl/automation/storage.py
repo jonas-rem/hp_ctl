@@ -13,7 +13,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Database schema - applied directly without migrations for fresh installs
 SCHEMA_SQL = """
@@ -22,6 +22,8 @@ SCHEMA_SQL = """
         outdoor_temp REAL,
         heat_power_generation REAL,
         heat_power_consumption REAL,
+        cool_power_generation REAL,
+        cool_power_consumption REAL,
         inlet_water_temp REAL,
         outlet_water_temp REAL,
         hp_status TEXT,
@@ -35,7 +37,7 @@ SCHEMA_SQL = """
         version INTEGER PRIMARY KEY
     );
 
-    INSERT OR REPLACE INTO schema_version (version) VALUES (2);
+    INSERT OR REPLACE INTO schema_version (version) VALUES (3);
 """
 
 
@@ -47,6 +49,8 @@ class HeatPumpSnapshot:
     outdoor_temp: Optional[float] = None
     heat_power_generation: Optional[float] = None  # Watts
     heat_power_consumption: Optional[float] = None  # Watts
+    cool_power_generation: Optional[float] = None  # Watts
+    cool_power_consumption: Optional[float] = None  # Watts
     inlet_water_temp: Optional[float] = None
     outlet_water_temp: Optional[float] = None
     zone1_actual_temp: Optional[float] = None
@@ -64,7 +68,8 @@ class DailySummary:
 
     date: str  # YYYY-MM-DD
     total_heat_kwh: float  # Integrated heat energy generated
-    total_consumption_kwh: float  # Integrated electrical energy consumed
+    total_cool_kwh: float  # Integrated cool energy generated
+    total_consumption_kwh: float  # Integrated heat/cool electrical energy consumed
     avg_cop: float  # Average coefficient of performance
     avg_outdoor_temp: float
     runtime_hours: float
@@ -99,7 +104,7 @@ class AutomationStorage:
         is_fresh_db = cursor.fetchone() is None
 
         if is_fresh_db:
-            # Fresh database - create schema directly at version 2
+            # Fresh database - create schema directly at current version
             logger.info("Creating snapshots table (version %d)", SCHEMA_VERSION)
             cursor.executescript(SCHEMA_SQL)
             self.conn.commit()
@@ -129,6 +134,16 @@ class AutomationStorage:
             cursor.execute("ALTER TABLE snapshots ADD COLUMN zone1_heat_target_temp REAL")
             modified = True
 
+        if "cool_power_generation" not in columns:
+            logger.info("Adding missing column cool_power_generation to snapshots table")
+            cursor.execute("ALTER TABLE snapshots ADD COLUMN cool_power_generation REAL")
+            modified = True
+
+        if "cool_power_consumption" not in columns:
+            logger.info("Adding missing column cool_power_consumption to snapshots table")
+            cursor.execute("ALTER TABLE snapshots ADD COLUMN cool_power_consumption REAL")
+            modified = True
+
         # 4. Ensure schema_version is up to date
         cursor.execute("SELECT version FROM schema_version")
         row = cursor.fetchone()
@@ -155,16 +170,18 @@ class AutomationStorage:
             """
             INSERT OR REPLACE INTO snapshots (
                 timestamp, outdoor_temp, heat_power_generation, heat_power_consumption,
-                inlet_water_temp, outlet_water_temp,
+                cool_power_generation, cool_power_consumption, inlet_water_temp, outlet_water_temp,
                 zone1_actual_temp, dhw_target_temp, zone1_heat_target_temp,
                 hp_status, operating_mode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot.timestamp.isoformat(),
                 snapshot.outdoor_temp,
                 snapshot.heat_power_generation,
                 snapshot.heat_power_consumption,
+                snapshot.cool_power_generation,
+                snapshot.cool_power_consumption,
                 snapshot.inlet_water_temp,
                 snapshot.outlet_water_temp,
                 snapshot.zone1_actual_temp,
@@ -207,6 +224,12 @@ class AutomationStorage:
                     outdoor_temp=row["outdoor_temp"],
                     heat_power_generation=row["heat_power_generation"],
                     heat_power_consumption=row["heat_power_consumption"],
+                    cool_power_generation=row["cool_power_generation"]
+                    if "cool_power_generation" in row.keys()
+                    else None,
+                    cool_power_consumption=row["cool_power_consumption"]
+                    if "cool_power_consumption" in row.keys()
+                    else None,
                     inlet_water_temp=row["inlet_water_temp"],
                     outlet_water_temp=row["outlet_water_temp"],
                     zone1_actual_temp=row["zone1_actual_temp"],
@@ -246,6 +269,7 @@ class AutomationStorage:
 
         # Calculate integrated energy using trapezoidal rule
         total_heat_kwh = 0.0
+        total_cool_kwh = 0.0
         total_consumption_kwh = 0.0
         runtime_seconds = 0.0
 
@@ -261,9 +285,18 @@ class AutomationStorage:
                 avg_power = (prev.heat_power_generation + curr.heat_power_generation) / 2
                 total_heat_kwh += (avg_power * delta_t) / 3600 / 1000
 
-            # Trapezoidal integration for consumption
+            # Trapezoidal integration for cool generation
+            if prev.cool_power_generation is not None and curr.cool_power_generation is not None:
+                avg_power = (prev.cool_power_generation + curr.cool_power_generation) / 2
+                total_cool_kwh += (avg_power * delta_t) / 3600 / 1000
+
+            # Trapezoidal integration for heat/cool consumption
             if prev.heat_power_consumption is not None and curr.heat_power_consumption is not None:
                 avg_power = (prev.heat_power_consumption + curr.heat_power_consumption) / 2
+                total_consumption_kwh += (avg_power * delta_t) / 3600 / 1000
+
+            if prev.cool_power_consumption is not None and curr.cool_power_consumption is not None:
+                avg_power = (prev.cool_power_consumption + curr.cool_power_consumption) / 2
                 total_consumption_kwh += (avg_power * delta_t) / 3600 / 1000
 
             # Track runtime when hp_status is "On"
@@ -271,7 +304,8 @@ class AutomationStorage:
                 runtime_seconds += delta_t
 
         # Calculate average COP
-        avg_cop = total_heat_kwh / total_consumption_kwh if total_consumption_kwh > 0 else 0.0
+        total_output_kwh = total_heat_kwh + total_cool_kwh
+        avg_cop = total_output_kwh / total_consumption_kwh if total_consumption_kwh > 0 else 0.0
 
         # Calculate average outdoor temperature
         outdoor_temps = [s.outdoor_temp for s in snapshots if s.outdoor_temp is not None]
@@ -280,6 +314,7 @@ class AutomationStorage:
         return DailySummary(
             date=date.date().isoformat(),
             total_heat_kwh=total_heat_kwh,
+            total_cool_kwh=total_cool_kwh,
             total_consumption_kwh=total_consumption_kwh,
             avg_cop=avg_cop,
             avg_outdoor_temp=avg_outdoor_temp,
