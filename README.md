@@ -67,7 +67,7 @@ limits:
 **Available writable fields:**
 - `dhw_target_temp` - Domestic Hot Water target temperature (40-75°C)
 - `zone1_heat_target_temp` - Zone 1 heating target temperature (20-65°C)
-- `zone1_cool_target_temp` - Zone 1 cooling target temperature (17-21°C)
+- `zone1_cool_target_temp` - Zone 1 cooling target temperature (17-20°C)
 - `quiet_mode` - Quiet mode level (0-3)
 - `operating_mode` - Operating mode (0-6)
 - `hp_status` - Heat pump on/off status (0-1)
@@ -84,7 +84,7 @@ git clone <repository-url>
 cd hp-ctl
 python3 -m venv venv
 source venv/bin/activate
-make install
+make dev-install
 ```
 
 ### Production Installation
@@ -206,6 +206,8 @@ make test                # Run all tests
 make check               # Lint + type checking
 make coverage            # Test with coverage report
 make fix                 # Auto-fix lint issues
+make install             # Install/update user service package
+make dev-install         # Install editable dev environment
 
 # Run a single test
 pytest tests/test_protocol.py::test_temp_converter

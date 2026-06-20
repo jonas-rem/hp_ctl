@@ -86,7 +86,7 @@ def test_writable_discovery(mapper):
     assert cool_topic in configs
     cool_config = configs[cool_topic]
     assert cool_config["min"] == 17.0
-    assert cool_config["max"] == 21.0
+    assert cool_config["max"] == 20.0
     assert "command_topic" in cool_config
 
     # Check enum entity (operating_mode)

@@ -121,10 +121,10 @@ class TestEncode:
     def test_zone1_cool_target_temp_safe_limits_accepted(self):
         """Zone1 cool target temp safe range endpoints are accepted"""
         min_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 17.0})
-        max_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 21.0})
+        max_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 20.0})
 
         assert STANDARD_CODEC.encode(min_msg)[39] == 145  # 17 + 128
-        assert STANDARD_CODEC.encode(max_msg)[39] == 149  # 21 + 128
+        assert STANDARD_CODEC.encode(max_msg)[39] == 148  # 20 + 128
 
     def test_non_writable_field(self):
         """Attempting to write non-writable field raises ValueError"""

@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2025 Jonas Remmert <j.remmert@mailbox.org>
 
-.PHONY: test check fix coverage install clean
+.PHONY: test check fix coverage install dev-install clean
+
+PYTHON ?= python3
+PIP ?= $(PYTHON) -m pip
 
 test:
 	pytest
@@ -17,7 +20,11 @@ coverage:
 	pytest --cov=src/hp_ctl --cov-report=html --cov-report=term-missing --html=htmlcov/test_report.html --self-contained-html
 
 install:
-	pip install -e ".[dev]"
+	$(PIP) install --user . --break-system-packages
+	@echo "Installed hp-ctl into the user site. Restart with: systemctl --user restart hp-ctl.service"
+
+dev-install:
+	$(PIP) install -e ".[dev]"
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .coverage htmlcov *.egg-info

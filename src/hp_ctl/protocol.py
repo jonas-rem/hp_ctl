@@ -538,7 +538,7 @@ STANDARD_FIELDS = [
         ha_icon="mdi:snowflake-thermometer",
         writable=True,
         min_value=17.0,
-        max_value=21.0,
+        max_value=20.0,
     ),
     FieldSpec(
         name="zone1_target_temp",
