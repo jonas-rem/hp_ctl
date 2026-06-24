@@ -85,7 +85,7 @@ def test_writable_discovery(mapper):
     cool_topic = "homeassistant/number/test_aquarea/zone1_cool_target_temp/config"
     assert cool_topic in configs
     cool_config = configs[cool_topic]
-    assert cool_config["min"] == 17.0
+    assert cool_config["min"] == 16.0
     assert cool_config["max"] == 20.0
     assert "command_topic" in cool_config
 

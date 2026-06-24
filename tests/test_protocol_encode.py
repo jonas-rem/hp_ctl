@@ -109,21 +109,21 @@ class TestEncode:
         assert encoded[38] == 148  # 20 + 128
 
     def test_zone1_cool_target_temp_below_safe_minimum_rejected(self):
-        """Zone1 cool target temp below safe minimum (17°C) is rejected"""
+        """Zone1 cool target temp below safe minimum (16°C) is rejected"""
         with pytest.raises(ValueError, match="below minimum"):
-            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_cool_target_temp": 16.0}))
+            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_cool_target_temp": 15.0}))
 
     def test_zone1_cool_target_temp_above_safe_maximum_rejected(self):
-        """Zone1 cool target temp above safe maximum (21°C) is rejected"""
+        """Zone1 cool target temp above safe maximum (20°C) is rejected"""
         with pytest.raises(ValueError, match="exceeds maximum"):
-            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_cool_target_temp": 22.0}))
+            STANDARD_CODEC.encode(Message(packet_type=0x10, fields={"zone1_cool_target_temp": 21.0}))
 
     def test_zone1_cool_target_temp_safe_limits_accepted(self):
         """Zone1 cool target temp safe range endpoints are accepted"""
-        min_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 17.0})
+        min_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 16.0})
         max_msg = Message(packet_type=0x10, fields={"zone1_cool_target_temp": 20.0})
 
-        assert STANDARD_CODEC.encode(min_msg)[39] == 145  # 17 + 128
+        assert STANDARD_CODEC.encode(min_msg)[39] == 144  # 16 + 128
         assert STANDARD_CODEC.encode(max_msg)[39] == 148  # 20 + 128
 
     def test_non_writable_field(self):
